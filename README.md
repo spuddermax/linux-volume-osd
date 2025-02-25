@@ -43,7 +43,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - **Volume Up:** `./volume-up.sh`  
 - **Volume Down:** `./volume-down.sh`  
 - **Mute/Unmute:** `./volume-mute.sh`  
-- **Set Low Volume:** `./lowvolume.sh`  
+- **Set Low Volume (optional):** `./lowvolume.sh`  
 
 ## Contributing
 
