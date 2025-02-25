@@ -1,4 +1,4 @@
-# OSD Popup Project
+# Linux Volume OSD Popup Project
 
 A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebEngine.
 
