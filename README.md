@@ -24,7 +24,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/<your-username>/my-osd-project.git
+   git clone https://github.com/spuddermax/my-osd-project.git
    cd my-osd-project
    ```
 
