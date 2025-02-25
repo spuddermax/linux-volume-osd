@@ -44,8 +44,8 @@ OSD Opacity Example
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/spuddermax/my-osd-project.git
-   cd my-osd-project
+   git clone https://github.com/spuddermax/linux-volume-osd.git
+   cd linux-volume-osd
    ```
 
 2. Make sure the scripts are executable:
