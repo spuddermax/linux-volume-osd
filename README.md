@@ -21,20 +21,14 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
   ```
 ## Screenshots
 
-<figure>
-  <img src="screenshots/osd_64.png" alt="OSD Popup Example">
-  <figcaption>OSD Popup Example</figcaption>
-</figure>
+OSD Popup Example
+![OSD Popup Example](screenshots/osd_64.png)
 
-<figure>
-  <img src="screenshots/osd_64_muted.png" alt="OSD Muted Example">
-  <figcaption>OSD Muted Example</figcaption>
-</figure>
+OSD Muted Example
+![OSD Muted Example](screenshots/osd_64_muted.png)
 
-<figure>
-  <img src="screenshots/osd_130_muted.png" alt="OSD Excess Volume Example">
-  <figcaption>OSD Excess Volume Example</figcaption>
-</figure>
+OSD Excess Volume Example
+![OSD Excess Volume Example](screenshots/osd_130_muted.png)
 
 ## Setup
 
