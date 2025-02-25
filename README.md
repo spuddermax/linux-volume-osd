@@ -7,6 +7,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - Displays volume changes with a visual popup.
 - Supports muted state with dedicated icon and messaging.
 - Uses a persistent server to update content smoothly.
+- Persists across all Workspace, and appears on the screen where the mouse cursor resides.
 - Designed for Linux (X11/Wayland) and integrated with PulseAudio.
 
 ## Installation Requirements
@@ -34,6 +35,10 @@ OSD Muted Example
 OSD Excess Volume Example
 
 ![OSD Excess Volume Example](screenshots/osd_130_muted.png)
+
+OSD Opacity Example
+
+![OSD Excess Volume Example](screenshots/osd_36_opacity.png)
 
 ## Setup
 
