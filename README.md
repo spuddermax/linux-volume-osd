@@ -67,6 +67,14 @@ Run the server directly (This will start the server in the background, and you w
    ./run_osd.sh --template volume --value 75
    ```
 
+## Bonus Script
+
+An optional low volume adjuster script is included, `./lowvolume.sh`, and was created to allow one to adjust the
+low-end volume on headphones or whatever device one might need. The low-end volume was found to be too loud, and
+dropping the volume to around 20% in the case in question would be too loud for the bottom end, but going less
+than 20% the sound would mute. Thus, this was built so at least at around 20% the volume is barely audible.
+Use at your own discretion.
+
 ## Usage
 
 - **Volume Up:** `./volume-up.sh`  
