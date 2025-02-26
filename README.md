@@ -82,6 +82,11 @@ Use at your own discretion.
 - **Mute/Unmute:** `./volume-mute.sh`  
 - **Set Low Volume (optional):** `./lowvolume.sh`  
 
+## Key Bindings
+
+You can create your own custom key bindings to replace the default volume controls of your system as desired.
+Ask Google or your favorite AI how to do this if you're not sure.
+
 ## Contributing
 
 Feel free to open issues, submit pull requests, or contribute with new features. Please review our [CONTRIBUTING.md](CONTRIBUTING.md) for details.
