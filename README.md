@@ -6,6 +6,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 
 - Displays volume changes with a visual popup.
 - Supports muted state with dedicated icon and messaging.
+- Simple HTML and CSS styling for ease of customization.
 - Uses a persistent server to update content smoothly.
 - Persists across all Workspace, and appears on the screen where the mouse cursor resides.
 - Designed for Linux and integrated with Pipewire.
