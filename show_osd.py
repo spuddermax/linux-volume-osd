@@ -23,7 +23,7 @@ LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
 # Default settings
 DEFAULT_SETTINGS = {
     "window_width": 480,
-    "window_height": 288,
+    "window_height": 200,
     "x_offset": 0,
     "y_offset": 0,
     "duration": 2000
@@ -116,8 +116,8 @@ class OSDWindow(QMainWindow):
         
         # Load settings for window size
         settings = load_settings()
-        window_width = settings.get("window_width", 280)
-        window_height = settings.get("window_height", 188)
+        window_width = settings.get("window_width", 480)
+        window_height = settings.get("window_height", 200)
         
         self.webview = QWebEngineView(self)
         self.webview.page().setBackgroundColor(Qt.transparent)
@@ -129,6 +129,9 @@ class OSDWindow(QMainWindow):
         
         # Use layout to let window resize with content
         self.setCentralWidget(self.webview)
+        
+        # Force window to use the exact size we set
+        self.setFixedSize(window_width, window_height)
 
         # Load the index.html template from file
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -221,9 +224,20 @@ class OSDWindow(QMainWindow):
         self.value = int(value)
         self.muted = muted
         
-        # Load duration from settings file
+        # Load settings file (reload each time to pick up changes)
         settings = load_settings()
         self.duration = settings.get("duration", 2000)
+        
+        # Get window dimensions from settings
+        window_width = settings.get("window_width", 480)
+        window_height = settings.get("window_height", 200)
+        
+        # Update window size if changed in settings
+        if self.width() != window_width or self.height() != window_height:
+            print(f"Updating window size to {window_width}x{window_height} from settings")
+            self.webview.setFixedSize(window_width, window_height)
+            self.resize(window_width, window_height)
+            self.setFixedSize(window_width, window_height)
         
         # Cancel any running timers
         if self.close_timer and self.close_timer.isActive():
@@ -303,10 +317,13 @@ class OSDWindow(QMainWindow):
             
             # Set fixed window size instead of adjusting to content
             settings = load_settings()
-            window_width = settings.get("window_width", 280)
-            window_height = settings.get("window_height", 188)
+            window_width = settings.get("window_width", 480)
+            window_height = settings.get("window_height", 200)
+            
+            # Apply size to webview and window
             self.webview.setFixedSize(window_width, window_height)
             self.resize(window_width, window_height)
+            self.setFixedSize(window_width, window_height)
             
             # Position window
             self.position_window()
@@ -412,11 +429,14 @@ class OSDWindow(QMainWindow):
     def adjust_size_to_content(self):
         """Set window size from settings"""
         settings = load_settings()
-        window_width = settings.get("window_width", 280)
-        window_height = settings.get("window_height", 188)
+        window_width = settings.get("window_width", 480)
+        window_height = settings.get("window_height", 200)
         
+        # Apply size to webview and window
         self.webview.setFixedSize(window_width, window_height)
         self.resize(window_width, window_height)
+        self.setFixedSize(window_width, window_height)
+        
         self.position_window()
 
 def server_accept_with_timeout(server, timeout):
