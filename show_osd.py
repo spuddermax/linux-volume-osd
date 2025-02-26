@@ -10,6 +10,7 @@ import threading
 import tempfile
 import atexit
 import signal
+import re
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QUrl, QPoint, pyqtSignal, QObject
@@ -21,6 +22,8 @@ LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
 
 # Default settings
 DEFAULT_SETTINGS = {
+    "window_width": 480,
+    "window_height": 288,
     "x_offset": 0,
     "y_offset": 0,
     "duration": 2000
@@ -111,20 +114,31 @@ class OSDWindow(QMainWindow):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
+        # Load settings for window size
+        settings = load_settings()
+        window_width = settings.get("window_width", 280)
+        window_height = settings.get("window_height", 188)
+        
         self.webview = QWebEngineView(self)
         self.webview.page().setBackgroundColor(Qt.transparent)
         self.webview.loadFinished.connect(self.on_load_finished)
         
+        # Set fixed size from settings
+        self.webview.setFixedSize(window_width, window_height)
+        self.resize(window_width, window_height)
+        
         # Use layout to let window resize with content
         self.setCentralWidget(self.webview)
 
-        # Load template - just once at startup
+        # Load the index.html template from file
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        index_path = os.path.join(script_dir, "templates", f"index.html")
+        index_path = os.path.join(script_dir, "templates", "index.html")
+        
         if os.path.exists(index_path):
             self.webview.load(QUrl.fromLocalFile(index_path))
         else:
-            self.webview.setHtml("<html><body><h1>OSD Placeholder</h1></body></html>")
+            # Fallback if the file doesn't exist
+            self.webview.setHtml("<html><body><h1>Error: index.html not found</h1></body></html>")
 
     def start_server(self):
         """Start the server in a separate thread"""
@@ -286,11 +300,18 @@ class OSDWindow(QMainWindow):
         self.page_loaded = True
         if self.template and self.value is not None:
             self.update_display()
-            # Now adjust size to content and make window visible
-            QTimer.singleShot(100, self.adjust_size_to_content)
+            
+            # Set fixed window size instead of adjusting to content
+            settings = load_settings()
+            window_width = settings.get("window_width", 280)
+            window_height = settings.get("window_height", 188)
+            self.webview.setFixedSize(window_width, window_height)
+            self.resize(window_width, window_height)
+            
+            # Position window
+            self.position_window()
             
             # Load duration from settings
-            settings = load_settings()
             self.duration = settings.get("duration", 2000)
             
             # Set timer for hiding
@@ -302,7 +323,10 @@ class OSDWindow(QMainWindow):
     def update_display(self):
         """Update the HTML content with new values"""
         try:
+            # Load template files
             template_html = self.template_content()
+            index_html = self.get_index_content()
+            
             capped_value = min(self.value, 150)
             
             # Calculate display values
@@ -310,22 +334,44 @@ class OSDWindow(QMainWindow):
             red_width = (capped_value - 100) / 150 * 100 if capped_value > 100 else 0
             red_offset = 66.67 if capped_value > 100 else 0
             
-            # Create and run JavaScript
-            script = f"""
-            document.getElementById('content').innerHTML = `{template_html}`;
-            document.getElementById('progress-standard-vol').style.width = '{cyan_width}%';
-            document.getElementById('progress-excess-vol').style.width = '{red_width}%';
-            document.getElementById('progress-excess-vol').style.left = '{red_offset}%';
-            document.getElementById('volume-value').innerText = '{self.value}';            
-            document.getElementById('muted-container').style.display = '{'block' if self.muted else 'none'}';
-
-            """
-            self.webview.page().runJavaScript(script)
-        except FileNotFoundError:
+            # Extract head content from index.html
+            head_match = re.search(r'<head>(.*?)</head>', index_html, re.DOTALL)
+            if head_match:
+                head_content = head_match.group(1)
+                
+                # Create script to update everything
+                script = f"""
+                // First, update the entire head content
+                document.head.innerHTML = `{head_content}`;
+                
+                // Update the content div with the template
+                document.getElementById('content').innerHTML = `{template_html}`;
+                
+                // Now update the dynamic elements
+                document.getElementById('progress-standard-vol').style.width = '{cyan_width}%';
+                document.getElementById('progress-excess-vol').style.width = '{red_width}%';
+                document.getElementById('progress-excess-vol').style.left = '{red_offset}%';
+                document.getElementById('volume-value').innerText = '{self.value}';            
+                document.getElementById('muted-container').style.display = '{'block' if self.muted else 'none'}';
+                """
+                self.webview.page().runJavaScript(script)
+                
+                # We no longer adjust size here - using fixed size from settings
+            else:
+                print("Warning: Could not extract head section from index.html")
+        except FileNotFoundError as e:
+            print(f"Template error: {e}")
             script = f"document.body.innerHTML = '<h1>Template {self.template} not found</h1>';"
             self.webview.page().runJavaScript(script)
         except Exception as e:
             print(f"Error updating display: {e}")
+
+    def get_index_content(self):
+        """Get the content of the index.html template file"""
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        index_path = os.path.join(script_dir, "templates", "index.html")
+        with open(index_path, "r") as f:
+            return f.read()
 
     def template_content(self):
         """Get the content of the template file"""
@@ -364,33 +410,14 @@ class OSDWindow(QMainWindow):
         super().closeEvent(event)
 
     def adjust_size_to_content(self):
-        """Adjust window size to match web content"""
-        # Evaluate content size via JavaScript - target the #content element specifically
-        script = """
-        (function() {
-            var content = document.getElementById('content');
-            // Get the computed style to account for padding, borders, etc.
-            var style = window.getComputedStyle(content);
-            var width = content.offsetWidth + 
-                       parseInt(style.marginLeft) + 
-                       parseInt(style.marginRight);
-            var height = content.offsetHeight + 
-                        parseInt(style.marginTop) + 
-                        parseInt(style.marginBottom);
-            return [width, height];
-        })();
-        """
-        self.webview.page().runJavaScript(script, self.set_window_size)
-    
-    def set_window_size(self, size):
-        """Set window size based on content dimensions"""
-        if size and len(size) == 2:
-            width, height = size
-            # Add some padding
-            self.webview.setFixedSize(width, height)
-            self.resize(width, height)
-            # Reposition after resize
-            self.position_window()
+        """Set window size from settings"""
+        settings = load_settings()
+        window_width = settings.get("window_width", 280)
+        window_height = settings.get("window_height", 188)
+        
+        self.webview.setFixedSize(window_width, window_height)
+        self.resize(window_width, window_height)
+        self.position_window()
 
 def server_accept_with_timeout(server, timeout):
     """Accept a connection with timeout handling"""
