@@ -9,7 +9,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - Uses a persistent server to update content smoothly.
 - Persists across all Workspace, and appears on the screen where the mouse cursor resides.
 - Designed for Linux and integrated with Pipewire.
-- Tested to run successfully in Mint 22 Mate and Mint 22.1 Cinnamon.
+- Tested to run successfully in Mint 22 MATE and Mint 22.1 Cinnamon.
 
 ## Installation Requirements
 
