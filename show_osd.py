@@ -19,6 +19,12 @@ from PyQt5.QtGui import QScreen, QCursor
 PORT = 9876  # Use a fixed port for IPC
 LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
 
+# Bottom-right corner of the window relative to the cursor screen.
+# If either is set to 0, the window will be centered on the screen in that dimension.
+# If a negative value is set, the window will be offset from the opposite side of the screen.
+X_OFFSET = 0
+Y_OFFSET = 40
+
 class SignalReceiver(QObject):
     # Signal to update the OSD from the main Qt thread
     update_signal = pyqtSignal(str, float, int, int, int, int, bool)
@@ -30,8 +36,6 @@ class OSDWindow(QMainWindow):
         self.value = None
         self.duration = 2000
         self.fade_duration = 500
-        self.width = 300
-        self.height = 300
         self.close_timer = None
         self.page_loaded = False
         self.server = None
@@ -87,12 +91,13 @@ class OSDWindow(QMainWindow):
         """Initialize the UI components"""
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, self.width, self.height)
-
+        
         self.webview = QWebEngineView(self)
-        self.webview.setGeometry(0, 0, self.width, self.height)
         self.webview.page().setBackgroundColor(Qt.transparent)
         self.webview.loadFinished.connect(self.on_load_finished)
+        
+        # Use layout to let window resize with content
+        self.setCentralWidget(self.webview)
 
         # Load template - just once at startup
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -136,19 +141,24 @@ class OSDWindow(QMainWindow):
                         client.close()
                         
                         try:
+                            if not data:
+                                print("Warning: Empty data received")
+                                continue
+                            
                             params = json.loads(data)
                             template = params.get('template')
                             muted = params.get('muted')
                             value = float(params.get('value'))
                             duration = int(params.get('duration', 2000))
                             fade = int(params.get('fade', 500))
-                            width = int(params.get('width', 300))
-                            height = int(params.get('height', 300))
                             
-                            # Update via signal to ensure thread safety
+                            # Update via signal to ensure thread safety - pass dummy values for width/height
+                            # until we update the signal parameters
                             self.signal_receiver.update_signal.emit(
-                                template, value, duration, fade, width, height, muted
+                                template, value, duration, fade, 0, 0, muted
                             )
+                        except json.JSONDecodeError as e:
+                            print(f"Error parsing JSON: {e}, received data: '{data}'")
                         except Exception as e:
                             print(f"Error processing request: {e}")
                     except socket.timeout:
@@ -174,20 +184,10 @@ class OSDWindow(QMainWindow):
     
     def update_content(self, template, value, duration, fade, width, height, muted=False):
         """Update the OSD content with new values"""
-        # Update window properties
-        if width != self.width or height != self.height:
-            self.width = width
-            self.height = height
-            self.setGeometry(0, 0, self.width, self.height)
-            self.webview.setGeometry(0, 0, self.width, self.height)
-        
         self.template = template
         self.value = int(value)
         self.muted = muted
         self.duration = duration
-        
-        # Position the window
-        self.position_window()
         
         # Cancel any running timers
         if self.close_timer and self.close_timer.isActive():
@@ -200,13 +200,17 @@ class OSDWindow(QMainWindow):
             
             # Now make window visible - always call show() since super().hide() was used
             self.setWindowOpacity(1.0)
+            
+            # Position window on the screen with the cursor BEFORE showing
+            self.position_window()
+            
             self.show()
             self.raise_() # Ensure it's on top
         
         # Set new close timer
         self.close_timer = QTimer()
         self.close_timer.setSingleShot(True)
-        self.close_timer.timeout.connect(self.hide_window)  # Renamed from start_fade_out
+        self.close_timer.timeout.connect(self.hide_window)
         self.close_timer.start(self.duration)
     
     def position_window(self):
@@ -220,27 +224,48 @@ class OSDWindow(QMainWindow):
                 current_screen = screen
                 break
         
-        screen_geometry = current_screen.geometry()
-        x = screen_geometry.x() + (screen_geometry.width() - self.width) - 40
-        y = screen_geometry.y() + (screen_geometry.height() - self.height) - 40
-        self.move(x, y)
+        # Get current window size
+        window_size = self.size()
+        window_width = window_size.width()
+        window_height = window_size.height()
+        
+        # Calculate x position
+        if X_OFFSET == 0:
+            # Center horizontally
+            x = current_screen.geometry().x() + (current_screen.geometry().width() - window_width) / 2
+        elif X_OFFSET > 0:
+            # Position from right edge
+            x = current_screen.geometry().x() + (current_screen.geometry().width() - window_width) - X_OFFSET
+        else:
+            # Position from left edge for negative values
+            x = current_screen.geometry().x() - X_OFFSET
+        
+        # Calculate y position
+        if Y_OFFSET == 0:
+            # Center vertically
+            y = current_screen.geometry().y() + (current_screen.geometry().height() - window_height) / 2
+        elif Y_OFFSET > 0:
+            # Position from bottom edge
+            y = current_screen.geometry().y() + (current_screen.geometry().height() - window_height) - Y_OFFSET
+        else:
+            # Position from top edge for negative values
+            y = current_screen.geometry().y() - Y_OFFSET
+        
+        # Convert coordinates to integers
+        self.move(int(x), int(y))
 
     def on_load_finished(self):
         """Called when the webview finishes loading"""
         self.page_loaded = True
         if self.template and self.value is not None:
             self.update_display()
-            # Now that content is updated, make window visible if it's the initial load
-            if not self.isVisible():
-                self.position_window()
-                self.setWindowOpacity(1.0)
-                self.show()
-                self.raise_()
-                # Set timer for hiding
-                self.close_timer = QTimer()
-                self.close_timer.setSingleShot(True)
-                self.close_timer.timeout.connect(self.hide_window)
-                self.close_timer.start(self.duration)
+            # Now adjust size to content and make window visible
+            QTimer.singleShot(100, self.adjust_size_to_content)
+            # Set timer for hiding
+            self.close_timer = QTimer()
+            self.close_timer.setSingleShot(True)
+            self.close_timer.timeout.connect(self.hide_window)
+            self.close_timer.start(self.duration)
     
     def update_display(self):
         """Update the HTML content with new values"""
@@ -306,6 +331,35 @@ class OSDWindow(QMainWindow):
         self.cleanup()
         super().closeEvent(event)
 
+    def adjust_size_to_content(self):
+        """Adjust window size to match web content"""
+        # Evaluate content size via JavaScript - target the #content element specifically
+        script = """
+        (function() {
+            var content = document.getElementById('content');
+            // Get the computed style to account for padding, borders, etc.
+            var style = window.getComputedStyle(content);
+            var width = content.offsetWidth + 
+                       parseInt(style.marginLeft) + 
+                       parseInt(style.marginRight);
+            var height = content.offsetHeight + 
+                        parseInt(style.marginTop) + 
+                        parseInt(style.marginBottom);
+            return [width, height];
+        })();
+        """
+        self.webview.page().runJavaScript(script, self.set_window_size)
+    
+    def set_window_size(self, size):
+        """Set window size based on content dimensions"""
+        if size and len(size) == 2:
+            width, height = size
+            # Add some padding
+            self.webview.setFixedSize(width, height)
+            self.resize(width, height)
+            # Reposition after resize
+            self.position_window()
+
 def server_accept_with_timeout(server, timeout):
     """Accept a connection with timeout handling"""
     try:
@@ -329,14 +383,12 @@ def send_update_to_server(args):
         client.settimeout(1)  # 1 second timeout
         client.connect(('127.0.0.1', PORT))
         
-        # Send parameters as JSON
+        # Send parameters as JSON - remove width and height
         params = {
             'template': args.template,
             'value': args.value,
             'duration': args.duration,
             'fade': args.fade,
-            'width': args.width,
-            'height': args.height,
             'muted': args.muted
         }
         client.send(json.dumps(params).encode('utf-8'))
@@ -358,8 +410,6 @@ if __name__ == "__main__":
     parser.add_argument("--muted", action="store_true", help="Show as muted (for volume)")
     parser.add_argument("--duration", type=int, default=2000, help="Display duration in ms")
     parser.add_argument("--fade", type=int, default=500, help="Fade-out duration in ms")
-    parser.add_argument("--width", type=int, default=300, help="Window width in pixels")
-    parser.add_argument("--height", type=int, default=300, help="Window height in pixels")
     args = parser.parse_args()
 
     # Try to send update to existing server
@@ -367,17 +417,36 @@ if __name__ == "__main__":
         print("Update sent to existing server")
         sys.exit(0)
     
+    # If we get here, we need to start a new server
     print("Starting new OSD server")
-    app = QApplication(sys.argv)
-    window = OSDWindow()
     
-    # Initialize content but don't show window yet
-    window.setWindowOpacity(0)  # Start invisible
-    window.template = args.template
-    window.value = args.value
-    window.duration = args.duration
-    window.fade_duration = args.fade
-    window.muted = args.muted
-    
-    # Start the event loop without explicitly showing the window
-    sys.exit(app.exec_())
+    # Start the server in a separate process
+    if os.fork() == 0:
+        # This is the child process - it will become the server
+        app = QApplication(sys.argv)
+        window = OSDWindow()
+        
+        # Initialize content but don't show window yet
+        window.setWindowOpacity(0)  # Start invisible
+        window.template = args.template
+        window.value = args.value
+        window.duration = args.duration
+        window.fade_duration = args.fade
+        window.muted = args.muted
+        
+        # Start the event loop without explicitly showing the window
+        sys.exit(app.exec_())
+    else:
+        # This is the parent process - wait for server to start then send the message
+        # Give the server some time to initialize
+        max_retries = 5
+        for i in range(max_retries):
+            time.sleep(0.5)  # Half-second delay between attempts
+            if os.path.exists(LOCK_FILE):
+                # Try to connect to the new server
+                if send_update_to_server(args):
+                    print("Update sent to newly started server")
+                    sys.exit(0)
+            
+        print("Failed to connect to server after multiple attempts")
+        sys.exit(1)
