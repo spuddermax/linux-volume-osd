@@ -185,15 +185,11 @@ class OSDWindow(QMainWindow):
         self.value = int(value)
         self.muted = muted
         self.duration = duration
-        self.fade_duration = fade
         
         # Position the window
         self.position_window()
         
-        # Cancel any running timers or animations
-        if hasattr(self, 'anim') and self.anim.state() == QPropertyAnimation.Running:
-            self.anim.stop()
-        
+        # Cancel any running timers
         if self.close_timer and self.close_timer.isActive():
             self.close_timer.stop()
         
@@ -201,16 +197,16 @@ class OSDWindow(QMainWindow):
         if self.page_loaded:
             # For subsequent calls, update content first, then show
             self.update_display()
-            # Now make window visible
+            
+            # Now make window visible - always call show() since super().hide() was used
             self.setWindowOpacity(1.0)
-            if not self.isVisible():
-                self.show()
-                self.raise_()
+            self.show()
+            self.raise_() # Ensure it's on top
         
         # Set new close timer
         self.close_timer = QTimer()
         self.close_timer.setSingleShot(True)
-        self.close_timer.timeout.connect(self.start_fade_out)
+        self.close_timer.timeout.connect(self.hide_window)  # Renamed from start_fade_out
         self.close_timer.start(self.duration)
     
     def position_window(self):
@@ -243,7 +239,7 @@ class OSDWindow(QMainWindow):
                 # Set timer for hiding
                 self.close_timer = QTimer()
                 self.close_timer.setSingleShot(True)
-                self.close_timer.timeout.connect(self.start_fade_out)
+                self.close_timer.timeout.connect(self.hide_window)
                 self.close_timer.start(self.duration)
     
     def update_display(self):
@@ -281,25 +277,10 @@ class OSDWindow(QMainWindow):
         with open(template_path, "r") as f:
             return f.read()
 
-    def start_fade_out(self):
-        """Start the fade-out animation"""
-        self.anim = QPropertyAnimation(self, b"windowOpacity")
-        self.anim.setDuration(self.fade_duration)
-        self.anim.setStartValue(1.0)
-        self.anim.setEndValue(0.0)
-        self.anim.setEasingCurve(QEasingCurve.OutQuad)
-        self.anim.finished.connect(self.make_invisible)
-        self.anim.start()
-    
-    def make_invisible(self):
-        """Make the window invisible but don't actually hide it"""
-        # Instead of calling super().hide(), we'll just make the window transparent
-        # but keep it technically visible to the system
-        self.setWindowOpacity(0.0)
-        
-        # Force a repaint of parent widgets to ensure the transparency takes effect
-        if self.parentWidget():
-            self.parentWidget().update()
+    def hide_window(self):
+        """Hide the window immediately"""
+        # We need to call super().hide() to ensure the window is removed from the system
+        super().hide()
     
     def cleanup(self):
         """Clean up resources when closing"""
