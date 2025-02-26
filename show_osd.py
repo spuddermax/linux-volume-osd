@@ -22,8 +22,8 @@ LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
 
 # Default settings
 DEFAULT_SETTINGS = {
-    "window_width": 480,
-    "window_height": 200,
+    "window_width": 420,
+    "window_height": 160,
     "x_offset": 0,
     "y_offset": 0,
     "duration": 2000
