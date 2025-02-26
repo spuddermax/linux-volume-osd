@@ -19,11 +19,31 @@ from PyQt5.QtGui import QScreen, QCursor
 PORT = 9876  # Use a fixed port for IPC
 LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
 
-# Bottom-right corner of the window relative to the cursor screen.
-# If either is set to 0, the window will be centered on the screen in that dimension.
-# If a negative value is set, the window will be offset from the opposite side of the screen.
-X_OFFSET = 0
-Y_OFFSET = 40
+# Default settings
+DEFAULT_SETTINGS = {
+    "x_offset": 0,
+    "y_offset": 0,
+    "duration": 2000
+}
+
+# Settings file path
+SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "osd_settings.json")
+
+def load_settings():
+    """Load settings from settings file, or use defaults if file doesn't exist"""
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, 'r') as f:
+                settings = json.load(f)
+            return settings
+        else:
+            # Create default settings file if it doesn't exist
+            with open(SETTINGS_FILE, 'w') as f:
+                json.dump(DEFAULT_SETTINGS, f, indent=4)
+            return DEFAULT_SETTINGS
+    except Exception as e:
+        print(f"Error loading settings: {e}")
+        return DEFAULT_SETTINGS
 
 class SignalReceiver(QObject):
     # Signal to update the OSD from the main Qt thread
@@ -35,7 +55,6 @@ class OSDWindow(QMainWindow):
         self.template = None
         self.value = None
         self.duration = 2000
-        self.fade_duration = 500
         self.close_timer = None
         self.page_loaded = False
         self.server = None
@@ -187,7 +206,10 @@ class OSDWindow(QMainWindow):
         self.template = template
         self.value = int(value)
         self.muted = muted
-        self.duration = duration
+        
+        # Load duration from settings file
+        settings = load_settings()
+        self.duration = settings.get("duration", 2000)
         
         # Cancel any running timers
         if self.close_timer and self.close_timer.isActive():
@@ -215,6 +237,11 @@ class OSDWindow(QMainWindow):
     
     def position_window(self):
         """Position the window on the correct screen"""
+        # Load current settings
+        settings = load_settings()
+        x_offset = settings.get("x_offset", 0)
+        y_offset = settings.get("y_offset", 0)
+        
         cursor_pos = QCursor.pos()
         app = QApplication.instance()
         current_screen = app.primaryScreen()
@@ -230,26 +257,26 @@ class OSDWindow(QMainWindow):
         window_height = window_size.height()
         
         # Calculate x position
-        if X_OFFSET == 0:
+        if x_offset == 0:
             # Center horizontally
             x = current_screen.geometry().x() + (current_screen.geometry().width() - window_width) / 2
-        elif X_OFFSET > 0:
+        elif x_offset > 0:
             # Position from right edge
-            x = current_screen.geometry().x() + (current_screen.geometry().width() - window_width) - X_OFFSET
+            x = current_screen.geometry().x() + (current_screen.geometry().width() - window_width) - x_offset
         else:
             # Position from left edge for negative values
-            x = current_screen.geometry().x() - X_OFFSET
+            x = current_screen.geometry().x() - x_offset
         
         # Calculate y position
-        if Y_OFFSET == 0:
+        if y_offset == 0:
             # Center vertically
             y = current_screen.geometry().y() + (current_screen.geometry().height() - window_height) / 2
-        elif Y_OFFSET > 0:
+        elif y_offset > 0:
             # Position from bottom edge
-            y = current_screen.geometry().y() + (current_screen.geometry().height() - window_height) - Y_OFFSET
+            y = current_screen.geometry().y() + (current_screen.geometry().height() - window_height) - y_offset
         else:
             # Position from top edge for negative values
-            y = current_screen.geometry().y() - Y_OFFSET
+            y = current_screen.geometry().y() - y_offset
         
         # Convert coordinates to integers
         self.move(int(x), int(y))
@@ -261,6 +288,11 @@ class OSDWindow(QMainWindow):
             self.update_display()
             # Now adjust size to content and make window visible
             QTimer.singleShot(100, self.adjust_size_to_content)
+            
+            # Load duration from settings
+            settings = load_settings()
+            self.duration = settings.get("duration", 2000)
+            
             # Set timer for hiding
             self.close_timer = QTimer()
             self.close_timer.setSingleShot(True)
@@ -383,12 +415,10 @@ def send_update_to_server(args):
         client.settimeout(1)  # 1 second timeout
         client.connect(('127.0.0.1', PORT))
         
-        # Send parameters as JSON - remove width and height
+        # Send parameters as JSON - remove duration as it's read from settings
         params = {
             'template': args.template,
             'value': args.value,
-            'duration': args.duration,
-            'fade': args.fade,
             'muted': args.muted
         }
         client.send(json.dumps(params).encode('utf-8'))
@@ -408,8 +438,6 @@ if __name__ == "__main__":
     parser.add_argument("--template", required=True, help="HTML template name (e.g., volume)")
     parser.add_argument("--value", type=float, required=True, help="Value to display (e.g., volume percentage)")
     parser.add_argument("--muted", action="store_true", help="Show as muted (for volume)")
-    parser.add_argument("--duration", type=int, default=2000, help="Display duration in ms")
-    parser.add_argument("--fade", type=int, default=500, help="Fade-out duration in ms")
     args = parser.parse_args()
 
     # Try to send update to existing server
@@ -430,8 +458,6 @@ if __name__ == "__main__":
         window.setWindowOpacity(0)  # Start invisible
         window.template = args.template
         window.value = args.value
-        window.duration = args.duration
-        window.fade_duration = args.fade
         window.muted = args.muted
         
         # Start the event loop without explicitly showing the window
