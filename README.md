@@ -86,6 +86,8 @@ Use at your own discretion.
 
 The OSD can be configured using the `osd_settings.json` file which is automatically created on first run. This file allows you to customize:
 
+- `window_width`: Width of the OSD window in pixels (default: 420)
+- `window_height`: Height of the OSD window in pixels (default: 160)
 - `x_offset`: Horizontal position of the OSD (0 for center, positive values offset from right edge, negative values offset from left edge)
 - `y_offset`: Vertical position of the OSD (0 for center, positive values offset from bottom edge, negative values offset from top edge)
 - `duration`: How long the OSD remains visible (in milliseconds)
@@ -93,13 +95,15 @@ The OSD can be configured using the `osd_settings.json` file which is automatica
 Example settings file:
 ```json
 {
+    "window_width": 420,
+    "window_height": 160,
     "x_offset": 0,
     "y_offset": 40,
     "duration": 2000
 }
 ```
 
-Changes to the settings file take effect immediately without needing to restart the server.
+Changes to the settings file take effect immediately without needing to restart the server. This includes window size adjustments, which will be applied on the next OSD update. Deleting the settings file will result in the default settings being re-applied on the next OSD update.
 
 ## Command-line Arguments
 
@@ -119,19 +123,26 @@ The OSD appearance can be customized by:
 2. Modifying CSS styles within these templates
 3. Creating new templates for different types of notifications
 
-The content div in `index.html` controls the main dimensions of the OSD window.
+When customizing templates, be mindful of:
+- Template dimensions should fit within the window size defined in `osd_settings.json`
+- CSS width/height properties in templates should be adjusted accordingly
+- If you create templates of varying sizes, you may need to adjust window dimensions in settings
+
+The content div in `index.html` provides the base structure, while specific templates (like `volume.html`) define the actual content displayed.
 
 ## Window Positioning
 
 The OSD will automatically:
 - Appear on the screen where your cursor is currently located
 - Position itself according to the x_offset and y_offset values in the settings file
-- Resize itself based on the content of the template
+- Use fixed dimensions based on window_width and window_height in the settings file
 
 Positioning Guide:
 - Center (both axes): x_offset=0, y_offset=0
 - Top-right corner: x_offset=40, y_offset=-40
 - Bottom-left corner: x_offset=-40, y_offset=40
+
+You can adjust the window dimensions in the settings file to accommodate your templates. The window size will update on the next OSD display without requiring a server restart.
 
 ## Key Bindings
 
