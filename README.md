@@ -82,6 +82,57 @@ Use at your own discretion.
 - **Mute/Unmute:** `./volume-mute.sh`  
 - **Set Low Volume (optional):** `./lowvolume.sh`  
 
+## Configuration
+
+The OSD can be configured using the `osd_settings.json` file which is automatically created on first run. This file allows you to customize:
+
+- `x_offset`: Horizontal position of the OSD (0 for center, positive values offset from right edge, negative values offset from left edge)
+- `y_offset`: Vertical position of the OSD (0 for center, positive values offset from bottom edge, negative values offset from top edge)
+- `duration`: How long the OSD remains visible (in milliseconds)
+
+Example settings file:
+```json
+{
+    "x_offset": 0,
+    "y_offset": 40,
+    "duration": 2000
+}
+```
+
+Changes to the settings file take effect immediately without needing to restart the server.
+
+## Command-line Arguments
+
+The OSD supports the following command-line arguments:
+
+- `--template`: HTML template name (e.g., volume)
+- `--value`: Value to display (e.g., volume percentage)
+- `--muted`: Flag to show the muted state (for volume)
+
+Note: Display duration is controlled via the settings file.
+
+## Customization
+
+The OSD appearance can be customized by:
+
+1. Editing the HTML templates in the `templates/` directory
+2. Modifying CSS styles within these templates
+3. Creating new templates for different types of notifications
+
+The content div in `index.html` controls the main dimensions of the OSD window.
+
+## Window Positioning
+
+The OSD will automatically:
+- Appear on the screen where your cursor is currently located
+- Position itself according to the x_offset and y_offset values in the settings file
+- Resize itself based on the content of the template
+
+Positioning Guide:
+- Center (both axes): x_offset=0, y_offset=0
+- Top-right corner: x_offset=40, y_offset=-40
+- Bottom-left corner: x_offset=-40, y_offset=40
+
 ## Key Bindings
 
 You can create your own custom key bindings to replace the default volume controls of your system as desired.
