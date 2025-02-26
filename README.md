@@ -8,7 +8,8 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - Supports muted state with dedicated icon and messaging.
 - Uses a persistent server to update content smoothly.
 - Persists across all Workspace, and appears on the screen where the mouse cursor resides.
-- Designed for Linux (X11/Wayland) and integrated with PulseAudio.
+- Designed for Linux and integrated with Pipewire.
+- Tested to run successfully in Mint 22 Mate and Mint 22.1 Cinnamon.
 
 ## Installation Requirements
 
@@ -18,7 +19,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - **Additional Packages:**  
   Install on Debian/Ubuntu with:
   ```bash
-  sudo apt install python3 python3-pip python3-pyqt5 python3-pyqt5.qtwebengine
+  sudo apt install python3-pyqt5 python3-pyqt5.qtwebengine
   ```
 ## Screenshots
 
@@ -53,7 +54,14 @@ OSD Opacity Example
    chmod +x run_osd.sh show_osd.py volume-up.sh volume-down.sh volume-mute.sh lowvolume.sh
    ```
 
-3. To run the OSD:
+3. To run the OSD run the server wrapper script directly, or run any of the three volume adjustment scripts and the server will be started automatically, e.g.:
+
+Volume up:
+   ```bash
+   ./volume-up.sh
+   ```
+
+Run the server directly (This will start the server in the background, and you will need to use a kill command or kill it from the System Monitor if you want it to stop. Better handling of this to come later, I hope):
    ```bash
    ./run_osd.sh --template volume --value 75
    ```
