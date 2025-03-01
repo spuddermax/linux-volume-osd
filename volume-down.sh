@@ -19,9 +19,29 @@ pactl set-sink-volume "$SINK" "$NEW%"
 # Get mute status
 IS_MUTED=$(pactl get-sink-mute "$SINK" | grep -o "yes")
 
+# Get all sinks and their descriptions, then format as JSON array
+SINKS=$(pactl list sinks | grep -E "Name:|Description:" | grep -v "Monitor" | awk '{
+    if ($1 == "Name:") {
+        name=$2;
+    } else if ($1 == "Description:") {
+        desc=substr($0, index($0,$2));
+        printf "%s:%s\n", name, desc;
+    }
+}' | sort -k2 | awk -v active="$SINK" '{
+    split($0, parts, ":");
+    name = parts[1];
+    desc = parts[2];
+    if (name == active) { 
+        printf "{\"name\":\"%s\",\"description\":\"%s\",\"active\":true},", name, desc;
+    } else {
+        printf "{\"name\":\"%s\",\"description\":\"%s\",\"active\":false},", name, desc;
+    }
+}' | sed 's/,$//')
+SINKS="[$SINKS]"
+
 # Show OSD with cyan text, centered in a virtual 200x200 box
 if [ "$IS_MUTED" = "yes" ]; then
-    $(dirname "$0")/run_osd.sh --template volume --value $NEW --muted &
+    $(dirname "$0")/run_osd.sh --template volume --value $NEW --muted --sinks "$SINKS" &
 else
-    $(dirname "$0")/run_osd.sh --template volume --value $NEW &
+    $(dirname "$0")/run_osd.sh --template volume --value $NEW --sinks "$SINKS" &
 fi

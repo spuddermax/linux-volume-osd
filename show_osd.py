@@ -25,7 +25,7 @@ DEFAULT_SETTINGS = {
     "window_width": 420,
     "window_height": 160,
     "x_offset": 0,
-    "y_offset": 0,
+    "y_offset": 40,
     "duration": 2000
 }
 
@@ -50,7 +50,7 @@ def load_settings():
 
 class SignalReceiver(QObject):
     # Signal to update the OSD from the main Qt thread
-    update_signal = pyqtSignal(str, float, int, int, int, int, bool)
+    update_signal = pyqtSignal(str, float, int, int, int, int, bool, str)
 
 class OSDWindow(QMainWindow):
     def __init__(self):
@@ -63,6 +63,7 @@ class OSDWindow(QMainWindow):
         self.server = None
         self.server_thread = None
         self.muted = False
+        self.sinks = "[]"  # Default empty JSON array for sinks
         # Setup signal receiver
         self.signal_receiver = SignalReceiver()
         self.signal_receiver.update_signal.connect(self.update_content)
@@ -187,11 +188,11 @@ class OSDWindow(QMainWindow):
                             value = float(params.get('value'))
                             duration = int(params.get('duration', 2000))
                             fade = int(params.get('fade', 500))
+                            sinks = params.get('sinks', '[]')
                             
-                            # Update via signal to ensure thread safety - pass dummy values for width/height
-                            # until we update the signal parameters
+                            # Update via signal to ensure thread safety
                             self.signal_receiver.update_signal.emit(
-                                template, value, duration, fade, 0, 0, muted
+                                template, value, duration, fade, 0, 0, muted, sinks
                             )
                         except json.JSONDecodeError as e:
                             print(f"Error parsing JSON: {e}, received data: '{data}'")
@@ -218,11 +219,12 @@ class OSDWindow(QMainWindow):
         
         print("Server thread exiting")
     
-    def update_content(self, template, value, duration, fade, width, height, muted=False):
+    def update_content(self, template, value, duration, fade, width, height, muted=False, sinks="[]"):
         """Update the OSD content with new values"""
         self.template = template
         self.value = int(value)
         self.muted = muted
+        self.sinks = sinks
         
         # Load settings file (reload each time to pick up changes)
         settings = load_settings()
@@ -370,6 +372,20 @@ class OSDWindow(QMainWindow):
                 document.getElementById('progress-excess-vol').style.left = '{red_offset}%';
                 document.getElementById('volume-value').innerText = '{self.value}';            
                 document.getElementById('muted-container').style.display = '{'block' if self.muted else 'none'}';
+                
+                // Update sink devices list if element exists
+                if (document.getElementById('sink-devices')) {{
+                    const sinks = {self.sinks};
+                    if (sinks && sinks.length > 0) {{
+                        let sinksHtml = "";
+                        sinks.forEach(sink => {{
+                            const activeClass = sink.active ? "active-sink" : "";
+                            const checkmark = sink.active ? "✓ " : "";
+                            sinksHtml += `<div class="sink-item ${{activeClass}}">${{checkmark}}${{sink.description}}</div>`;
+                        }});
+                        document.getElementById('sink-devices').innerHTML = sinksHtml;
+                    }}
+                }}
                 """
                 self.webview.page().runJavaScript(script)
                 
@@ -466,7 +482,8 @@ def send_update_to_server(args):
         params = {
             'template': args.template,
             'value': args.value,
-            'muted': args.muted
+            'muted': args.muted,
+            'sinks': args.sinks
         }
         client.send(json.dumps(params).encode('utf-8'))
         client.close()
@@ -485,6 +502,7 @@ if __name__ == "__main__":
     parser.add_argument("--template", required=True, help="HTML template name (e.g., volume)")
     parser.add_argument("--value", type=float, required=True, help="Value to display (e.g., volume percentage)")
     parser.add_argument("--muted", action="store_true", help="Show as muted (for volume)")
+    parser.add_argument("--sinks", help="JSON array of available audio sinks")
     args = parser.parse_args()
 
     # Try to send update to existing server
@@ -506,6 +524,7 @@ if __name__ == "__main__":
         window.template = args.template
         window.value = args.value
         window.muted = args.muted
+        window.sinks = args.sinks or '[]'
         
         # Start the event loop without explicitly showing the window
         sys.exit(app.exec_())

@@ -1,5 +1,6 @@
 <div class="volume-container">
     <h1>Volume: <span id="volume-value"></span>%</h1>
+    <div id="sink-devices" class="sink-devices"></div>
     <div class="progress-bar">
         <div class="marker-100">
         </div>
@@ -28,6 +29,24 @@
     h1 {
         margin: 0 0 10px 0;
         font-size: 24px;
+    }
+    .sink-devices {
+        margin-bottom: 10px;
+        font-size: 11px;
+        text-align: left;
+        max-height: 40px;
+        overflow-y: auto;
+    }
+    .sink-item {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: #aaa;
+        padding: 1px 0;
+    }
+    .active-sink {
+        color: #596eb5;
+        font-weight: bold;
     }
     .progress-bar {
         position: relative;
