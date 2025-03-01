@@ -1,6 +1,6 @@
 <div class="volume-container">
     <div id="pin-container" class="pin-container">
-        <div id="pin-icon" class="pin-icon unpinned" title="Click to pin window">📌</div>
+        <div id="pin-icon" class="pin-icon pinned" title="Click to pin window">📌</div>
     </div>
     <h1 class="volume-title">Volume: <span id="volume-value"></span>%</h1>
     <div id="sink-devices" class="sink-devices"></div>
@@ -114,7 +114,7 @@
         transform: rotate(0deg);
         opacity: 0.5;
     }
-    .pin-icon.pinned {
+    .pinned {
         transform: rotate(-45deg);
         opacity: 1;
     }
