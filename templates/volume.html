@@ -1,4 +1,7 @@
 <div class="volume-container">
+    <div id="pin-container" class="pin-container">
+        <div id="pin-icon" class="pin-icon unpinned" title="Click to pin window">📌</div>
+    </div>
     <h1 class="volume-title">Volume: <span id="volume-value"></span>%</h1>
     <div id="sink-devices" class="sink-devices"></div>
     <div class="progress-bar">
@@ -97,4 +100,17 @@
         margin-right: 10px;
         fill: currentColor; /* Icon will match text color */
     }
+    .pin-container {
+        position: absolute;
+        top: 10px;
+        right: 15px;
+        z-index: 10;
+    }
+    .pin-icon {
+        width: 16px;
+        height: 16px;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+    
 </style>
