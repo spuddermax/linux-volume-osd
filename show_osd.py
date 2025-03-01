@@ -71,7 +71,7 @@ class OSDWindow(QMainWindow):
         # Setup UI
         self.setup_ui()
         
-        # Make the window visible on all workspaces (sticky)
+        # Make the window sticky (visible on all workspaces)
         if QApplication.instance().platformName() == "xcb":
             try:
                 import Xlib
@@ -79,8 +79,16 @@ class OSDWindow(QMainWindow):
                 display = Xlib.display.Display()
                 window_id = int(self.winId())
                 window = display.create_resource_object('window', window_id)
-                atom = display.intern_atom('_NET_WM_DESKTOP')
-                window.change_property(atom, Xlib.Xatom.CARDINAL, 32, [0xFFFFFFFF])
+                
+                # Set _NET_WM_DESKTOP to all desktops
+                desktop_atom = display.intern_atom('_NET_WM_DESKTOP')
+                window.change_property(desktop_atom, Xlib.Xatom.CARDINAL, 32, [0xFFFFFFFF])
+                
+                # Also set _NET_WM_STATE_STICKY for better compatibility
+                state_atom = display.intern_atom('_NET_WM_STATE')
+                sticky_atom = display.intern_atom('_NET_WM_STATE_STICKY')
+                window.change_property(state_atom, Xlib.Xatom.ATOM, 32, [sticky_atom])
+                
                 display.sync()
             except ImportError:
                 print("Warning: python-xlib not installed, cannot set window to all workspaces")
@@ -258,6 +266,9 @@ class OSDWindow(QMainWindow):
             
             self.show()
             self.raise_() # Ensure it's on top
+            
+            # Make sure window is sticky (visible on all workspaces) each time it's shown
+            self.ensure_window_sticky()
         
         # Set new close timer
         self.close_timer = QTimer()
@@ -454,6 +465,42 @@ class OSDWindow(QMainWindow):
         self.setFixedSize(window_width, window_height)
         
         self.position_window()
+
+    def ensure_window_sticky(self):
+        """Ensure the window remains visible on all workspaces"""
+        if QApplication.instance().platformName() == "xcb":
+            try:
+                import Xlib
+                import Xlib.display
+                from Xlib import X
+                
+                display = Xlib.display.Display()
+                window_id = int(self.winId())
+                window = display.create_resource_object('window', window_id)
+                root = display.screen().root
+                
+                # Set sticky state using client message (more reliable than just setting property)
+                state_atom = display.intern_atom('_NET_WM_STATE')
+                sticky_atom = display.intern_atom('_NET_WM_STATE_STICKY')
+                
+                event = Xlib.protocol.event.ClientMessage(
+                    window=window,
+                    client_type=state_atom,
+                    data=(32, [1, sticky_atom, 0, 0, 0])  # 1 = add/set
+                )
+                
+                mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
+                root.send_event(event, event_mask=mask)
+                
+                # Also set _NET_WM_DESKTOP to all desktops
+                desktop_atom = display.intern_atom('_NET_WM_DESKTOP')
+                window.change_property(desktop_atom, Xlib.Xatom.CARDINAL, 32, [0xFFFFFFFF])
+                
+                display.sync()
+            except ImportError:
+                print("Warning: python-xlib not installed, cannot set window to all workspaces")
+            except Exception as e:
+                print(f"Error ensuring window is sticky: {e}")
 
 def server_accept_with_timeout(server, timeout):
     """Accept a connection with timeout handling"""
