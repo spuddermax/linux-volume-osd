@@ -5,6 +5,7 @@
     <title>OSD Popup</title>
     <script type="text/javascript" src="qwebchannel.js"></script>
     <script type="text/javascript" src="bridge_tester.js"></script>
+    <script type="text/javascript" src="sink_selector.js"></script>
     <style>
         body {
             margin: 0;
@@ -52,34 +53,34 @@
     <div id="content">
         <!-- Template content will be injected here -->
     </div>
-    <div id="toast-container" class="toast-container">
+    <!-- <div id="toast-container" class="toast-container"> -->
         <!-- Toast notifications will be added dynamically -->
-    </div>
+    <!-- </div> -->
     
     <script>
-        // Function to show toast notification
-        function showToast(message, duration) {
-            console.log("showToast called with: " + message);
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = 'toast';
-            toast.textContent = message;
-            container.appendChild(toast);
+        // // Function to show toast notification
+        // function showToast(message, duration) {
+        //     console.log("showToast called with: " + message);
+        //     const container = document.getElementById('toast-container');
+        //     const toast = document.createElement('div');
+        //     toast.className = 'toast';
+        //     toast.textContent = message;
+        //     container.appendChild(toast);
             
-            // Trigger reflow to enable transition
-            void toast.offsetWidth;
-            toast.classList.add('show');
+        //     // Trigger reflow to enable transition
+        //     void toast.offsetWidth;
+        //     toast.classList.add('show');
             
-            setTimeout(() => {
-                toast.classList.remove('show');
-                setTimeout(() => {
-                    container.removeChild(toast);
-                }, 300); // Wait for fade out animation
-            }, duration || 2000);
-        }
+        //     setTimeout(() => {
+        //         toast.classList.remove('show');
+        //         setTimeout(() => {
+        //             container.removeChild(toast);
+        //         }, 300); // Wait for fade out animation
+        //     }, duration || 2000);
+        // }
         
-        // Make the function available globally
-        window.showToast = showToast;
+        // // Make the function available globally
+        // window.showToast = showToast;
         
         // Debug helper
         document.addEventListener('click', function(e) {

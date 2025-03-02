@@ -793,32 +793,32 @@ document.addEventListener('DOMContentLoaded', function() {
                 else:
                     logging.error(f"Failed to get sink info: {result.stderr}")
                 
-                # Get sink description for the toast message
-                sink_description = ""
-                try:
-                    sink_data = json.loads(self.sinks)
-                    for sink in sink_data:
-                        if sink.get('name') == sink_name:
-                            sink_description = sink.get('description', sink_name)
-                            break
-                except Exception as e:
-                    logging.error(f"Error parsing sink data: {e}")
-                    sink_description = sink_name
+                # # Get sink description for the toast message
+                # sink_description = ""
+                # try:
+                #     sink_data = json.loads(self.sinks)
+                #     for sink in sink_data:
+                #         if sink.get('name') == sink_name:
+                #             sink_description = sink.get('description', sink_name)
+                #             break
+                # except Exception as e:
+                #     logging.error(f"Error parsing sink data: {e}")
+                #     sink_description = sink_name
                 
-                logging.debug(f"Showing toast notification for sink: {sink_description}")
+                # logging.debug(f"Showing toast notification for sink: {sink_description}")
                 
-                # Show toast notification
-                js_script = f"""
-                console.log('Showing toast notification');
-                if (window.showToast) {{
-                    window.showToast('Audio output switched to {sink_description}', 3000);
-                    console.log('Toast function called');
-                }} else {{
-                    console.error('showToast function not available');
-                }}
-                """
-                self.webview.page().runJavaScript(js_script, lambda result: logging.debug("Toast notification script executed"))
-                
+                # # Show toast notification
+                # js_script = f"""
+                # console.log('Showing toast notification');
+                # if (window.showToast) {{
+                #     window.showToast('Audio output switched to {sink_description}', 3000);
+                #     console.log('Toast function called');
+                # }} else {{
+                #     console.error('showToast function not available');
+                # }}
+                # """
+                # self.webview.page().runJavaScript(js_script, lambda result: logging.debug("Toast notification script executed"))
+
                 # Reset the close timer to give user time to see the notification
                 if self.close_timer and self.close_timer.isActive():
                     self.close_timer.stop()
