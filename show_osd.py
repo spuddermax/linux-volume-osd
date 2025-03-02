@@ -843,16 +843,17 @@ document.addEventListener('DOMContentLoaded', function() {
                         '|', 'grep', '-E', '"Name:|Description:"', 
                         '|', 'grep', '-v', '"Monitor"'
                     ]
-                    # Use a more direct approach with a shell command to get sink info
+                    # Use a more direct approach with a shell command to get sink info including the volume level
                     sink_cmd_str = " ".join(sink_cmd)
                     raw_sinks = subprocess.check_output(
-                        f"pactl list sinks | grep -E 'Name:|Description:' | grep -v 'Monitor'", 
+                        f"pactl list sinks | grep -E 'Name:|Description:|Volume:' | grep -v 'Monitor'", 
                         shell=True, text=True
                     )
                     
                     # Process the output similar to the shell scripts
                     current_name = None
                     current_desc = None
+                    current_volume = None
                     sink_data = []
                     
                     for line in raw_sinks.splitlines():
@@ -860,12 +861,22 @@ document.addEventListener('DOMContentLoaded', function() {
                             current_name = line.split(":", 1)[1].strip()
                         elif line.strip().startswith("Description:"):
                             current_desc = line.split(":", 1)[1].strip()
-                            if current_name and current_desc:
+                        elif line.strip().startswith("Volume:"):
+                            # Volume is in the format "Volume: front-left: 22282 /  34% / -28.11 dB,   front-right: 22282 /  34% / -28.11 dB"
+                            # Extract the volume percentage with % stripped
+                            current_volume = line.split(":", 1)[1].strip().split(" / ")[1].replace("%", "").strip()
+                            logging.debug(f"Current volume: {current_volume}")
+                            if current_name and current_desc and current_volume:
                                 # Add to our list
+                                logging.debug(f"Adding sink: {current_name}, {current_desc}, {current_volume}")
                                 is_active = (current_name == sink_name)
+                                if is_active:
+                                    logging.debug(f"Setting active sink: {current_name}")
+                                    self.value = int(current_volume)
                                 sink_data.append({
                                     "name": current_name,
                                     "description": current_desc,
+                                    "value": current_volume,
                                     "active": is_active
                                 })
                                 current_name = None
@@ -892,8 +903,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 self.close_timer = QTimer()
                 self.close_timer.setSingleShot(True)
                 self.close_timer.timeout.connect(self.hide_window)
-                self.close_timer.start(4000)  # Extended duration to see the notification
-                logging.debug("Started new close timer with 4000ms duration")
+                if not self.pinned:
+                    self.close_timer.start(self.duration)
+                    logging.debug("Started new close timer with 4000ms duration")
+                else:
+                    logging.debug("Window is pinned, not starting close timer")
         except Exception as e:
             logging.error(f"Error changing sink: {e}", exc_info=True)
             # Show toast notification for error
