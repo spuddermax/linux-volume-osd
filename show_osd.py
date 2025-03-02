@@ -793,32 +793,56 @@ document.addEventListener('DOMContentLoaded', function() {
                 else:
                     logging.error(f"Failed to get sink info: {result.stderr}")
                 
-                # # Get sink description for the toast message
-                # sink_description = ""
-                # try:
-                #     sink_data = json.loads(self.sinks)
-                #     for sink in sink_data:
-                #         if sink.get('name') == sink_name:
-                #             sink_description = sink.get('description', sink_name)
-                #             break
-                # except Exception as e:
-                #     logging.error(f"Error parsing sink data: {e}")
-                #     sink_description = sink_name
+                # Update the display to reflect the new active sink
+                # Instead of waiting for next volume change, refresh sink list now
+                try:
+                    # Get the updated list of sinks with the newly active one marked
+                    sink_cmd = [
+                        'pactl', 'list', 'sinks', 
+                        '|', 'grep', '-E', '"Name:|Description:"', 
+                        '|', 'grep', '-v', '"Monitor"'
+                    ]
+                    # Use a more direct approach with a shell command to get sink info
+                    sink_cmd_str = " ".join(sink_cmd)
+                    raw_sinks = subprocess.check_output(
+                        f"pactl list sinks | grep -E 'Name:|Description:' | grep -v 'Monitor'", 
+                        shell=True, text=True
+                    )
+                    
+                    # Process the output similar to the shell scripts
+                    current_name = None
+                    current_desc = None
+                    sink_data = []
+                    
+                    for line in raw_sinks.splitlines():
+                        if line.strip().startswith("Name:"):
+                            current_name = line.split(":", 1)[1].strip()
+                        elif line.strip().startswith("Description:"):
+                            current_desc = line.split(":", 1)[1].strip()
+                            if current_name and current_desc:
+                                # Add to our list
+                                is_active = (current_name == sink_name)
+                                sink_data.append({
+                                    "name": current_name,
+                                    "description": current_desc,
+                                    "active": is_active
+                                })
+                                current_name = None
+                                current_desc = None
+                    
+                    # Update the sinks property with the new JSON data
+                    if sink_data:
+                        # display in alphabetical order
+                        sink_data.sort(key=lambda x: x['name'])
+                        self.sinks = json.dumps(sink_data)
+                        logging.debug(f"Updated sink list: {self.sinks}")
+                        
+                        # Refresh the display with the updated sink list
+                        self.update_display()
+                        logging.info("Display refreshed with updated sink list")
+                except Exception as e:
+                    logging.error(f"Error refreshing sink list: {e}", exc_info=True)
                 
-                # logging.debug(f"Showing toast notification for sink: {sink_description}")
-                
-                # # Show toast notification
-                # js_script = f"""
-                # console.log('Showing toast notification');
-                # if (window.showToast) {{
-                #     window.showToast('Audio output switched to {sink_description}', 3000);
-                #     console.log('Toast function called');
-                # }} else {{
-                #     console.error('showToast function not available');
-                # }}
-                # """
-                # self.webview.page().runJavaScript(js_script, lambda result: logging.debug("Toast notification script executed"))
-
                 # Reset the close timer to give user time to see the notification
                 if self.close_timer and self.close_timer.isActive():
                     self.close_timer.stop()
@@ -829,9 +853,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 self.close_timer.timeout.connect(self.hide_window)
                 self.close_timer.start(4000)  # Extended duration to see the notification
                 logging.debug("Started new close timer with 4000ms duration")
-                
-                # Update the display to reflect the new active sink
-                # We would need to refresh the sink list, but we'll let the next volume change do that
         except Exception as e:
             logging.error(f"Error changing sink: {e}", exc_info=True)
             # Show toast notification for error
