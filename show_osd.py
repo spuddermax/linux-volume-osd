@@ -97,6 +97,19 @@ class JsBridge(QObject):
         """Method exposed to JavaScript to select a sink"""
         logging.info(f"JsBridge: Received sink selection request for {sink_name}")
         self.window.select_sink(sink_name)
+
+    @pyqtSlot()
+    def pinWindow(self):
+        """Method exposed to JavaScript to pin the window"""
+        logging.info("JsBridge: Received pin window request")
+        self.window.pinned = not self.window.pinned
+        # If self.window.pinned is False, reset the timer to hide the window
+        if not self.window.pinned:
+            logging.info("JsBridge: Window is not pinned, resetting timer")
+            self.window.close_timer.start(self.window.duration)
+        else:
+            logging.info("JsBridge: Window is pinned, stopping timer")
+            self.window.close_timer.stop()
     
     @pyqtSlot(str)
     def log(self, message):
@@ -117,6 +130,7 @@ class OSDWindow(QMainWindow):
         self.muted = False
         self.sinks = "[]"  # Default empty JSON array for sinks
         self.current_sink = None
+        self.pinned = False
         
         # Create JS bridge
         self.js_bridge = JsBridge(self)
@@ -496,7 +510,11 @@ document.addEventListener('DOMContentLoaded', function() {
         self.close_timer = QTimer()
         self.close_timer.setSingleShot(True)
         self.close_timer.timeout.connect(self.hide_window)
-        self.close_timer.start(self.duration)
+        if not self.pinned:
+            logging.info("OSDWindow: window is not pinned, starting close timer")
+            self.close_timer.start(self.duration)
+        else:
+            logging.info("OSDWindow: window is pinned, not starting close timer")
     
     def position_window(self):
         """Position the window on the correct screen"""
@@ -577,7 +595,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     def update_display(self):
         """Update the HTML content with new values"""
-        logging.debug(f"Updating display with template={self.template}, value={self.value}, muted={self.muted}")
+        logging.debug(f"Updating display with template={self.template}, value={self.value}, muted={self.muted}, pinned={self.pinned}")
         try:
             # Load template files
             template_html = self.template_content()
@@ -609,6 +627,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 document.getElementById('progress-excess-vol').style.left = '{red_offset}%';
                 document.getElementById('volume-value').innerText = '{self.value}';            
                 document.getElementById('muted-container').style.display = '{'block' if self.muted else 'none'}';
+                document.getElementById('pin-icon').classList.toggle('pinned', {str(self.pinned).lower()});
                 
                 // Update sink devices list if element exists
                 if (document.getElementById('sink-devices')) {{
@@ -622,6 +641,24 @@ document.addEventListener('DOMContentLoaded', function() {
                         }});
                         document.getElementById('sink-devices').innerHTML = sinksHtml;
                         
+                        // Add a click handler to the pin icon
+                        document.getElementById('pin-icon').addEventListener('click', function(event) {{
+                            console.log('Pin icon clicked!');
+                            // Toggle the pin by adding or removing the 'pinned' class
+                            const pinIcon = document.getElementById('pin-icon');
+                            pinIcon.classList.toggle('pinned');
+                            // Try with WebChannel first
+                            if (window.bridge) {{
+                                console.log('Using bridge.pinWindow');
+                                window.bridge.pinWindow();
+                            }} else if (window.pinWindow) {{
+                                console.log('Using window.pinWindow');
+                                window.pinWindow();
+                            }} else {{
+                                console.error('No pinWindow method available');
+                            }}
+                        }});
+
                         // Add click handlers directly to each sink item for redundancy
                         setTimeout(() => {{
                             const sinkItems = document.querySelectorAll('.sink-item');
@@ -760,6 +797,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 print("Warning: python-xlib not installed, cannot set window to all workspaces")
             except Exception as e:
                 print(f"Error ensuring window is sticky: {e}")
+
+    def pin_window(self):
+        """Pin the window to the current workspace"""
+        logging.info("OSDWindow: Pinning window")
 
     def select_sink(self, sink_name):
         """Set the specified sink as the default audio sink"""
