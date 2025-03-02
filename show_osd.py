@@ -893,6 +893,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     "value": current_volume,
                                     "active": is_active
                                 })
+
                                 current_name = None
                                 current_desc = None
                     

@@ -27,7 +27,10 @@
         width: 330px;
         margin: 20px;
         color: #596eb5;
-
+        user-select: none;         /* Standard syntax */
+        -webkit-user-select: none; /* Safari */
+        -moz-user-select: none;    /* Firefox */
+        -ms-user-select: none;     /* IE/Edge */
     }
     .volume-title {
         margin: 0 0 10px 0;
@@ -39,6 +42,23 @@
         text-align: center;
         max-height: 40px;
         overflow-y: auto;
+        scrollbar-color: #555 #222;
+    }
+    .sink-devices::-webkit-scrollbar {
+        width: 8px; /* Scrollbar width */
+    }
+
+    .sink-devices::-webkit-scrollbar-track {
+      background: #222; /* Dark track color */
+    }
+
+    .sink-devices::-webkit-scrollbar-thumb {
+        background: #555; /* Dark thumb color */
+        border-radius: 4px; /* Rounded edges */
+    }
+
+    .sink-devices::-webkit-scrollbar-thumb:hover {
+        background: #777; /* Lighter color on hover */
     }
     .sink-item {
         white-space: nowrap;
