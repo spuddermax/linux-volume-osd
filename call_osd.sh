@@ -15,5 +15,20 @@ if [ ! -w "$LOG_FILE" ]; then
     fi
 fi
 
-# Unset problematic environment variables
+# Handle simple volume commands
+if [ "$1" = "volume-up" ]; then
+    # Forward to Python script with appropriate flag
+    env -u PYTHONHOME -u PYTHONPATH /usr/bin/python3 "$(dirname "$0")/show_osd.py" --volume-up
+    exit $?
+elif [ "$1" = "volume-down" ]; then
+    # Forward to Python script with appropriate flag
+    env -u PYTHONHOME -u PYTHONPATH /usr/bin/python3 "$(dirname "$0")/show_osd.py" --volume-down
+    exit $?
+elif [ "$1" = "volume-mute" ]; then
+    # Forward to Python script with appropriate flag
+    env -u PYTHONHOME -u PYTHONPATH /usr/bin/python3 "$(dirname "$0")/show_osd.py" --volume-mute
+    exit $?
+fi
+
+# Regular operation - pass all arguments to the Python script
 env -u PYTHONHOME -u PYTHONPATH /usr/bin/python3 "$(dirname "$0")/show_osd.py" "$@" 

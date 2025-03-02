@@ -81,6 +81,266 @@ def load_settings():
         print(f"Error loading settings: {e}")
         return DEFAULT_SETTINGS
 
+def get_active_sink():
+    """Get the currently active audio sink"""
+    try:
+        result = subprocess.run(['pactl', 'info'], capture_output=True, text=True)
+        for line in result.stdout.splitlines():
+            if line.startswith("Default Sink:"):
+                sink = line.split(":", 1)[1].strip()
+                if sink:
+                    logging.debug(f"Found active sink: {sink}")
+                    return sink
+        
+        logging.error("No sink found in pactl info")
+        return None
+    except Exception as e:
+        logging.error(f"Error getting active sink: {e}")
+        return None
+
+def get_sink_volume(sink):
+    """Get the current volume of the specified sink"""
+    try:
+        result = subprocess.run(['pactl', 'get-sink-volume', sink], capture_output=True, text=True)
+        # Extract volume percentage from output like: "Volume: front-left: 22282 /  34% / -28.11 dB,   front-right: 22282 /  34% / -28.11 dB"
+        match = re.search(r'(\d+)%', result.stdout)
+        if match:
+            volume = int(match.group(1))
+            logging.debug(f"Current volume for sink {sink}: {volume}%")
+            return volume
+        else:
+            logging.error(f"Could not parse volume from: {result.stdout}")
+            return 0
+    except Exception as e:
+        logging.error(f"Error getting sink volume: {e}")
+        return 0
+
+def is_sink_muted(sink):
+    """Check if the specified sink is muted"""
+    try:
+        result = subprocess.run(['pactl', 'get-sink-mute', sink], capture_output=True, text=True)
+        muted = "yes" in result.stdout
+        logging.debug(f"Sink {sink} mute status: {muted}")
+        return muted
+    except Exception as e:
+        logging.error(f"Error checking if sink is muted: {e}")
+        return False
+
+def set_sink_volume(sink, volume):
+    """Set the volume of the specified sink"""
+    try:
+        # Clamp volume between 0 and 150%
+        volume = max(0, min(150, volume))
+        logging.debug(f"Setting sink {sink} volume to {volume}%")
+        subprocess.run(['pactl', 'set-sink-volume', sink, f"{volume}%"], capture_output=True, text=True)
+        return volume
+    except Exception as e:
+        logging.error(f"Error setting sink volume: {e}")
+        return None
+
+def set_sink_mute(sink, mute):
+    """Set the mute state of the specified sink"""
+    try:
+        logging.debug(f"Setting sink {sink} mute to {mute}")
+        mute_val = "1" if mute else "0"
+        subprocess.run(['pactl', 'set-sink-mute', sink, mute_val], capture_output=True, text=True)
+        return True
+    except Exception as e:
+        logging.error(f"Error setting sink mute: {e}")
+        return False
+
+def get_available_sinks(active_sink):
+    """Get a list of all available sinks and format as JSON"""
+    try:
+        result = subprocess.run(['pactl', 'list', 'sinks'], capture_output=True, text=True)
+        
+        sinks = []
+        current_sink = {}
+        
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("Name:"):
+                if current_sink and "name" in current_sink:
+                    sinks.append(current_sink)
+                current_sink = {"name": line.split(":", 1)[1].strip()}
+                current_sink["active"] = (current_sink["name"] == active_sink)
+            elif line.startswith("Description:") and "name" in current_sink:
+                current_sink["description"] = line.split(":", 1)[1].strip()
+        
+        # Add the last sink
+        if current_sink and "name" in current_sink and "description" in current_sink:
+            sinks.append(current_sink)
+            
+        logging.debug(f"Found {len(sinks)} audio sinks")
+        # sort the sinks by description
+        sinks = sorted(sinks, key=lambda x: x['description'])
+        return sinks
+    except Exception as e:
+        logging.error(f"Error getting available sinks: {e}")
+        return []
+
+def volume_up():
+    """Increase volume by 2% and show OSD"""
+    sink = get_active_sink()
+    if not sink:
+        logging.error("No sink found")
+        return False
+        
+    current_volume = get_sink_volume(sink)
+    new_volume = current_volume + 2
+    if new_volume > 150:
+        new_volume = 150
+    
+    set_sink_volume(sink, new_volume)
+    muted = is_sink_muted(sink)
+    sinks_json = json.dumps(get_available_sinks(sink))
+    
+    # Create arguments for displaying the OSD
+    class Args:
+        pass
+    args = Args()
+    args.template = "volume"
+    args.value = new_volume
+    args.muted = muted
+    args.sinks = sinks_json
+    args.debug = False
+    
+    # Send update to OSD
+    if not send_update_to_server(args):
+        logging.info("Starting OSD for volume up")
+        start_osd(args)
+    
+    return True
+
+def volume_down():
+    """Decrease volume by 2% and show OSD"""
+    sink = get_active_sink()
+    if not sink:
+        logging.error("No sink found")
+        return False
+        
+    current_volume = get_sink_volume(sink)
+    new_volume = current_volume - 2
+    if new_volume < 0:
+        new_volume = 0
+    
+    set_sink_volume(sink, new_volume)
+    muted = is_sink_muted(sink)
+    sinks_json = json.dumps(get_available_sinks(sink))
+    
+    # Create arguments for displaying the OSD
+    class Args:
+        pass
+    args = Args()
+    args.template = "volume"
+    args.value = new_volume
+    args.muted = muted
+    args.sinks = sinks_json
+    args.debug = False
+    
+    # Send update to OSD
+    if not send_update_to_server(args):
+        logging.info("Starting OSD for volume down")
+        start_osd(args)
+    
+    return True
+
+def volume_mute():
+    """Toggle mute status and show OSD"""
+    sink = get_active_sink()
+    if not sink:
+        logging.error("No sink found")
+        return False
+    
+    current_volume = get_sink_volume(sink)
+    muted = is_sink_muted(sink)
+    
+    # Toggle mute
+    set_sink_mute(sink, not muted)
+    
+    # Update muted status after toggle
+    muted = not muted
+    sinks_json = json.dumps(get_available_sinks(sink))
+    
+    # Create arguments for displaying the OSD
+    class Args:
+        pass
+    args = Args()
+    args.template = "volume"
+    args.value = current_volume
+    args.muted = muted
+    args.sinks = sinks_json
+    args.debug = False
+    
+    # Send update to OSD
+    if not send_update_to_server(args):
+        logging.info("Starting OSD for volume mute toggle")
+        start_osd(args)
+    
+    return True
+
+def start_osd(args):
+    """Start OSD application with given arguments"""
+    # First make sure there are no other running instances
+    try:
+        if os.path.exists(LOCK_FILE):
+            with open(LOCK_FILE, 'r') as f:
+                old_pid = f.read().strip()
+                logging.warning(f"Found old lock file with PID {old_pid}, attempting cleanup")
+                try:
+                    old_pid = int(old_pid)
+                    os.kill(old_pid, signal.SIGKILL)
+                    logging.info(f"Killed old process with PID {old_pid}")
+                except (ValueError, ProcessLookupError):
+                    logging.info("Old process not running, continuing")
+                except Exception as e:
+                    logging.warning(f"Error killing old process: {e}")
+            os.unlink(LOCK_FILE)
+    except Exception as e:
+        logging.warning(f"Error cleaning up old lock file: {e}")
+    
+    # Create application
+    app = QApplication(sys.argv)
+    
+    # Set application name for user settings
+    app.setApplicationName("VolumeOSD")
+    app.setOrganizationName("VolumeOSD")
+    
+    # Enable high-DPI scaling
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+        app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+        app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
+    # Create main window, run app
+    window = OSDWindow()
+    
+    # Update content with provided arguments
+    window.template = args.template
+    window.value = args.value
+    window.muted = args.muted
+    window.sinks = args.sinks
+    
+    # Show window (after values are set)
+    window.show()
+    
+    # Make sure window appears on top
+    window.raise_()
+    window.activateWindow()
+    
+    # Position window according to settings
+    window.position_window()
+    
+    # Main event loop
+    exit_code = app.exec_()
+    
+    # Proper cleanup upon exit
+    logging.info("Application exiting, cleaning up...")
+    if hasattr(window, 'cleanup'):
+        window.cleanup()
+    
+    sys.exit(exit_code)
+
 class SignalReceiver(QObject):
     # Signal to update the OSD from the main Qt thread
     update_signal = pyqtSignal(str, float, int, int, int, int, bool, str)
@@ -469,6 +729,8 @@ document.addEventListener('DOMContentLoaded', function() {
         self.value = int(value)
         self.muted = muted
         self.sinks = sinks
+
+        logging.info(f"sinks={sinks}")
         
         # Load settings file (reload each time to pick up changes)
         settings = load_settings()
@@ -976,18 +1238,47 @@ def send_update_to_server(args):
         return False
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Display an OSD popup")
-    parser.add_argument("--template", required=True, help="HTML template name (e.g., volume)")
-    parser.add_argument("--value", type=float, required=True, help="Value to display (e.g., volume percentage)")
+    parser = argparse.ArgumentParser(description="Display an OSD popup or control volume")
+    
+    # Add a command group
+    command_group = parser.add_mutually_exclusive_group()
+    command_group.add_argument("--volume-up", action="store_true", help="Increase volume by 2%")
+    command_group.add_argument("--volume-down", action="store_true", help="Decrease volume by 2%")
+    command_group.add_argument("--volume-mute", action="store_true", help="Toggle mute state")
+    
+    # Legacy OSD display arguments
+    parser.add_argument("--template", help="HTML template name (e.g., volume)")
+    parser.add_argument("--value", type=float, help="Value to display (e.g., volume percentage)")
     parser.add_argument("--muted", action="store_true", help="Show as muted (for volume)")
     parser.add_argument("--sinks", help="JSON array of available audio sinks")
     parser.add_argument("--debug", action="store_true", help="Enable extra debug mode")
+    
     args = parser.parse_args()
 
     # Set extra debug mode if requested
     if args.debug:
         logging.info("Debug mode enabled")
         os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '9222'
+    
+    # Handle volume commands
+    if args.volume_up:
+        logging.info("Processing volume up command")
+        volume_up()
+        sys.exit(0)
+    elif args.volume_down:
+        logging.info("Processing volume down command")
+        volume_down()
+        sys.exit(0)
+    elif args.volume_mute:
+        logging.info("Processing volume mute command")
+        volume_mute()
+        sys.exit(0)
+    
+    # Legacy OSD display handling
+    if not args.template:
+        parser.error("--template is required unless a volume command is specified")
+    if args.value is None:
+        parser.error("--value is required unless a volume command is specified")
     
     # Try to send update to existing server
     if send_update_to_server(args):
@@ -997,64 +1288,4 @@ if __name__ == "__main__":
     # If we get here, we need to start a new server
     logging.info("Starting new OSD server")
     
-    # First make sure there are no other running instances
-    # This shouldn't happen normally, but better safe than sorry
-    try:
-        if os.path.exists(LOCK_FILE):
-            with open(LOCK_FILE, 'r') as f:
-                old_pid = f.read().strip()
-                logging.warning(f"Found old lock file with PID {old_pid}, attempting cleanup")
-                try:
-                    old_pid = int(old_pid)
-                    os.kill(old_pid, signal.SIGKILL)
-                    logging.info(f"Killed old process with PID {old_pid}")
-                except (ValueError, ProcessLookupError):
-                    logging.info("Old process not running, continuing")
-                except Exception as e:
-                    logging.warning(f"Error killing old process: {e}")
-            os.unlink(LOCK_FILE)
-    except Exception as e:
-        logging.warning(f"Error cleaning up old lock file: {e}")
-    
-    # Create application
-    app = QApplication(sys.argv)
-    
-    # Set application name for user settings
-    app.setApplicationName("VolumeOSD")
-    app.setOrganizationName("VolumeOSD")
-    
-    # Enable high-DPI scaling
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    
-    # Create main window, run app
-    window = OSDWindow()
-    
-    # Update content with provided arguments
-    window.template = args.template
-    window.value = args.value
-    window.muted = args.muted
-    window.sinks = args.sinks or "[]"
-    
-    # Show window (after values are set)
-    window.show()
-    
-    # Make sure window appears on top
-    window.raise_()
-    window.activateWindow()
-    
-    # Position window according to settings
-    window.position_window()
-    
-    # Main event loop
-    exit_code = app.exec_()
-    
-    # Proper cleanup upon exit
-    logging.info("Application exiting, cleaning up...")
-    if hasattr(window, 'cleanup'):
-        window.cleanup()
-    
-    # Return exit code
-    sys.exit(exit_code)
+    start_osd(args)
