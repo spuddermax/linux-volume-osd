@@ -11,10 +11,43 @@ import tempfile
 import atexit
 import signal
 import re
+import subprocess
+import logging
+from datetime import datetime
 from PyQt5.QtWidgets import QApplication, QMainWindow
-from PyQt5.QtWebEngineWidgets import QWebEngineView
-from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QUrl, QPoint, pyqtSignal, QObject
+from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineScript
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QUrl, QPoint, pyqtSignal, QObject, pyqtSlot
 from PyQt5.QtGui import QScreen, QCursor
+from PyQt5.QtWebChannel import QWebChannel
+
+# Setup logging
+LOG_FILE = '/var/log/show_osd.log'
+try:
+    # Try to create a log file with world-writable permissions
+    if not os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'w') as f:
+            pass
+        os.chmod(LOG_FILE, 0o666)  # World-writable
+
+    logging.basicConfig(
+        filename=LOG_FILE,
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+except Exception as e:
+    # Fallback to user's home directory if can't write to /var/log
+    user_log_file = os.path.expanduser("~/show_osd.log")
+    logging.basicConfig(
+        filename=user_log_file,
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    logging.error(f"Could not use {LOG_FILE}, falling back to {user_log_file}: {e}")
+    LOG_FILE = user_log_file
+
+logging.info("=== OSD Application Starting ===")
 
 # Socket for IPC
 PORT = 9876  # Use a fixed port for IPC
@@ -52,9 +85,28 @@ class SignalReceiver(QObject):
     # Signal to update the OSD from the main Qt thread
     update_signal = pyqtSignal(str, float, int, int, int, int, bool, str)
 
+class JsBridge(QObject):
+    """Bridge class for JavaScript to Python communication"""
+    
+    def __init__(self, window):
+        super().__init__()
+        self.window = window
+    
+    @pyqtSlot(str)
+    def selectSink(self, sink_name):
+        """Method exposed to JavaScript to select a sink"""
+        logging.info(f"JsBridge: Received sink selection request for {sink_name}")
+        self.window.select_sink(sink_name)
+    
+    @pyqtSlot(str)
+    def log(self, message):
+        """Method to log messages from JavaScript"""
+        logging.debug(f"JS Bridge Log: {message}")
+
 class OSDWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        logging.debug("Initializing OSDWindow")
         self.template = None
         self.value = None
         self.duration = 2000
@@ -64,6 +116,11 @@ class OSDWindow(QMainWindow):
         self.server_thread = None
         self.muted = False
         self.sinks = "[]"  # Default empty JSON array for sinks
+        self.current_sink = None
+        
+        # Create JS bridge
+        self.js_bridge = JsBridge(self)
+        
         # Setup signal receiver
         self.signal_receiver = SignalReceiver()
         self.signal_receiver.update_signal.connect(self.update_content)
@@ -90,10 +147,11 @@ class OSDWindow(QMainWindow):
                 window.change_property(state_atom, Xlib.Xatom.ATOM, 32, [sticky_atom])
                 
                 display.sync()
+                logging.debug("Window set to visible on all workspaces")
             except ImportError:
-                print("Warning: python-xlib not installed, cannot set window to all workspaces")
+                logging.warning("python-xlib not installed, cannot set window to all workspaces")
             except Exception as e:
-                print(f"Error setting window to all workspaces: {e}")
+                logging.error(f"Error setting window to all workspaces: {e}")
         
         # Create lock file to signal we're running
         self.create_lock_file()
@@ -104,22 +162,27 @@ class OSDWindow(QMainWindow):
         # Register cleanup handler for clean exit
         atexit.register(self.cleanup)
         signal.signal(signal.SIGTERM, self.signal_handler)
+        
+        logging.debug("OSDWindow initialization complete")
     
     def create_lock_file(self):
         """Create a lock file to indicate the server is running"""
         try:
             with open(LOCK_FILE, 'w') as f:
                 f.write(str(os.getpid()))
+            logging.debug(f"Created lock file at {LOCK_FILE}")
         except Exception as e:
-            print(f"Warning: Could not create lock file: {e}")
+            logging.warning(f"Could not create lock file: {e}")
     
     def signal_handler(self, signum, frame):
         """Handle termination signals"""
+        logging.info(f"Received signal {signum}, cleaning up")
         self.cleanup()
         sys.exit(0)
 
     def setup_ui(self):
         """Initialize the UI components"""
+        logging.debug("Setting up UI components")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         
@@ -129,8 +192,42 @@ class OSDWindow(QMainWindow):
         window_height = settings.get("window_height", 200)
         
         self.webview = QWebEngineView(self)
+        
+        # Create and set custom page with proper error handling
+        class WebEnginePage(QWebEnginePage):
+            def javaScriptConsoleMessage(self_, level, message, lineNumber, sourceID):
+                levels = {
+                    0: logging.DEBUG,
+                    1: logging.INFO,
+                    2: logging.WARNING,
+                    3: logging.ERROR
+                }
+                logging.log(levels.get(level, logging.DEBUG), f"JS: {message} (line {lineNumber}, source: {sourceID})")
+        
+        self.page = WebEnginePage(self.webview)
+        
+        # Set up web channel for JavaScript to Python communication
+        # IMPORTANT: Create the channel and register the bridge object BEFORE setting the page
+        self.channel = QWebChannel()
+        self.js_bridge = JsBridge(self)
+        self.channel.registerObject("bridge", self.js_bridge)
+        logging.debug("Bridge object registered with WebChannel")
+        
+        # Set the WebChannel on the page
+        self.page.setWebChannel(self.channel)
+        logging.debug("WebChannel set on page")
+        
+        # Now set the page on the webview
+        self.webview.setPage(self.page)
+        
+        # Set transparent background
         self.webview.page().setBackgroundColor(Qt.transparent)
+        
+        # Connect load finished signal
         self.webview.loadFinished.connect(self.on_load_finished)
+        
+        # Enable debug output for WebEngine
+        os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '9222'
         
         # Set fixed size from settings
         self.webview.setFixedSize(window_width, window_height)
@@ -142,18 +239,143 @@ class OSDWindow(QMainWindow):
         # Force window to use the exact size we set
         self.setFixedSize(window_width, window_height)
 
+        # Set up WebChannel JavaScript
+        self.setup_webchannel_js()
+
+        # Copy our bridge_tester.js to the templates folder if it doesn't exist
+        self.copy_bridge_tester_js()
+
         # Load the index.html template from file
         script_dir = os.path.dirname(os.path.abspath(__file__))
         index_path = os.path.join(script_dir, "templates", "index.html")
         
         if os.path.exists(index_path):
+            logging.debug(f"Loading template from {index_path}")
             self.webview.load(QUrl.fromLocalFile(index_path))
         else:
-            # Fallback if the file doesn't exist
+            logging.error(f"Template file not found: {index_path}")
             self.webview.setHtml("<html><body><h1>Error: index.html not found</h1></body></html>")
-
+    
+    def copy_bridge_tester_js(self):
+        """Copy bridge_tester.js to the templates folder if it doesn't exist"""
+        try:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            tester_js_path = os.path.join(script_dir, "templates", "bridge_tester.js")
+            
+            # Skip if file already exists
+            if os.path.exists(tester_js_path):
+                logging.debug("bridge_tester.js already exists")
+                return
+            
+            # Check if we have the file in the same directory as the script
+            source_path = os.path.join(script_dir, "bridge_tester.js")
+            if os.path.exists(source_path):
+                import shutil
+                shutil.copy(source_path, tester_js_path)
+                logging.debug(f"Copied bridge_tester.js to {tester_js_path}")
+            else:
+                # Create the file with minimal content
+                with open(tester_js_path, 'w') as f:
+                    f.write("""// Simple bridge tester
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("Bridge tester loaded");
+    var div = document.createElement('div');
+    div.innerHTML = "Bridge: " + (window.bridge ? "Available" : "Not available");
+    div.style.position = "absolute";
+    div.style.top = "5px";
+    div.style.left = "5px";
+    div.style.fontSize = "10px";
+    div.style.color = window.bridge ? "green" : "red";
+    document.body.appendChild(div);
+});
+""")
+                logging.debug(f"Created minimal bridge_tester.js at {tester_js_path}")
+        except Exception as e:
+            logging.error(f"Error setting up bridge_tester.js: {e}")
+    
+    def setup_webchannel_js(self):
+        """Set up JavaScript for WebChannel communication"""
+        script = QWebEngineScript()
+        
+        # Create the JavaScript code
+        js_code = """
+        // This script sets up the WebChannel for JavaScript to Python communication
+        try {
+            console.log("WebChannel transport script running");
+            
+            // Wait for page to be fully loaded
+            document.addEventListener("DOMContentLoaded", function() {
+                console.log("DOM content loaded, setting up WebChannel");
+                setupWebChannel();
+            });
+            
+            // Function to set up the WebChannel
+            function setupWebChannel() {
+                if (typeof QWebChannel === 'undefined') {
+                    console.error("QWebChannel is not defined! Waiting for script to load...");
+                    setTimeout(setupWebChannel, 100);
+                    return;
+                }
+                
+                if (!qt || !qt.webChannelTransport) {
+                    console.error("Qt WebChannel transport not available yet, retrying...");
+                    setTimeout(setupWebChannel, 100);
+                    return;
+                }
+                
+                try {
+                    console.log("Creating QWebChannel with transport");
+                    new QWebChannel(qt.webChannelTransport, function(channel) {
+                        // Make the bridge object available globally
+                        window.bridge = channel.objects.bridge;
+                        console.log("WebChannel initialized, bridge object available: ", 
+                                   window.bridge ? "YES" : "NO");
+                        
+                        // Set up the sink selection function using the bridge
+                        window.sinkSelected = function(sinkName) {
+                            console.log("Global sinkSelected initialized with: " + sinkName);
+                            if (window.bridge) {
+                                window.bridge.selectSink(sinkName);
+                                return true;
+                            } else {
+                                console.error("Bridge not available for sink selection");
+                                return false;
+                            }
+                        };
+                        
+                        // Let Python know WebChannel is ready
+                        if (window.bridge) {
+                            window.bridge.log("WebChannel setup complete in JavaScript");
+                        }
+                    });
+                } catch (e) {
+                    console.error("Error setting up WebChannel: " + e);
+                }
+            }
+            
+            // Try to set up immediately in case DOM is already loaded
+            if (document.readyState === "complete" || document.readyState === "interactive") {
+                console.log("Document already ready, setting up WebChannel immediately");
+                setupWebChannel();
+            }
+        } catch (e) {
+            console.error("Error in WebChannel setup script: " + e);
+        }
+        """
+        
+        script.setSourceCode(js_code)
+        script.setName("webchannel.js")
+        script.setWorldId(QWebEngineScript.MainWorld)
+        script.setInjectionPoint(QWebEngineScript.DocumentCreation)
+        script.setRunsOnSubFrames(False)
+        
+        # Add the script to the page
+        self.page.scripts().insert(script)
+        logging.debug("WebChannel JavaScript injected")
+    
     def start_server(self):
         """Start the server in a separate thread"""
+        logging.debug("Starting IPC server thread")
         self.running = True
         self.server_thread = threading.Thread(target=self.run_server)
         self.server_thread.daemon = True
@@ -324,7 +546,9 @@ class OSDWindow(QMainWindow):
 
     def on_load_finished(self):
         """Called when the webview finishes loading"""
+        logging.debug("WebView finished loading")
         self.page_loaded = True
+        
         if self.template and self.value is not None:
             self.update_display()
             
@@ -349,9 +573,11 @@ class OSDWindow(QMainWindow):
             self.close_timer.setSingleShot(True)
             self.close_timer.timeout.connect(self.hide_window)
             self.close_timer.start(self.duration)
+            logging.debug(f"Window will auto-hide in {self.duration}ms")
     
     def update_display(self):
         """Update the HTML content with new values"""
+        logging.debug(f"Updating display with template={self.template}, value={self.value}, muted={self.muted}")
         try:
             # Load template files
             template_html = self.template_content()
@@ -392,23 +618,56 @@ class OSDWindow(QMainWindow):
                         sinks.forEach(sink => {{
                             const activeClass = sink.active ? "active-sink" : "";
                             const checkmark = sink.active ? "✓ " : "";
-                            sinksHtml += `<div class="sink-item ${{activeClass}}">${{checkmark}}${{sink.description}}</div>`;
+                            sinksHtml += `<div class="sink-item ${{activeClass}}" data-sink-name="${{sink.name}}">${{checkmark}}${{sink.description}}</div>`;
                         }});
                         document.getElementById('sink-devices').innerHTML = sinksHtml;
+                        
+                        // Add click handlers directly to each sink item for redundancy
+                        setTimeout(() => {{
+                            const sinkItems = document.querySelectorAll('.sink-item');
+                            console.log('Found ' + sinkItems.length + ' sink items');
+                            sinkItems.forEach(item => {{
+                                if (!item.getAttribute('data-click-init')) {{
+                                    item.setAttribute('data-click-init', 'true');
+                                    item.addEventListener('click', function(event) {{
+                                        const sinkName = this.getAttribute('data-sink-name');
+                                        console.log('Sink clicked: ' + sinkName);
+                                        if (sinkName && !this.classList.contains('active-sink')) {{
+                                            console.log('Calling sinkSelected with: ' + sinkName);
+                                            
+                                            // Try with WebChannel first
+                                            if (window.bridge) {{
+                                                console.log('Using bridge.selectSink');
+                                                window.bridge.selectSink(sinkName);
+                                            }} else if (window.sinkSelected) {{
+                                                // Fall back to window.sinkSelected if available
+                                                console.log('Using window.sinkSelected');
+                                                window.sinkSelected(sinkName);
+                                            }} else {{
+                                                console.error('No sink selection method available');
+                                            }}
+                                        }}
+                                    }});
+                                }}
+                            }});
+                        }}, 100); // Short delay to ensure DOM is ready
                     }}
                 }}
+                
+                // Log completion
+                console.log('Display update complete');
                 """
-                self.webview.page().runJavaScript(script)
+                self.webview.page().runJavaScript(script, lambda result: logging.debug("Display update script executed"))
                 
                 # We no longer adjust size here - using fixed size from settings
             else:
-                print("Warning: Could not extract head section from index.html")
+                logging.warning("Could not extract head section from index.html")
         except FileNotFoundError as e:
-            print(f"Template error: {e}")
+            logging.error(f"Template error: {e}")
             script = f"document.body.innerHTML = '<h1>Template {self.template} not found</h1>';"
             self.webview.page().runJavaScript(script)
         except Exception as e:
-            print(f"Error updating display: {e}")
+            logging.error(f"Error updating display: {e}")
 
     def get_index_content(self):
         """Get the content of the index.html template file"""
@@ -431,7 +690,7 @@ class OSDWindow(QMainWindow):
     
     def cleanup(self):
         """Clean up resources when closing"""
-        print("Cleaning up...")
+        logging.info("Cleaning up...")
         self.running = False
         
         # Remove lock file
@@ -502,6 +761,87 @@ class OSDWindow(QMainWindow):
             except Exception as e:
                 print(f"Error ensuring window is sticky: {e}")
 
+    def select_sink(self, sink_name):
+        """Set the specified sink as the default audio sink"""
+        logging.info(f"Selecting sink: {sink_name}")
+        try:
+            if sink_name:
+                # Log the command we're about to run
+                cmd = ['pactl', 'set-default-sink', sink_name]
+                logging.debug(f"Running command: {' '.join(cmd)}")
+                
+                # Run the command with detailed output capture
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode != 0:
+                    logging.error(f"Command failed with return code {result.returncode}")
+                    logging.error(f"Error output: {result.stderr}")
+                else:
+                    logging.debug(f"Command succeeded: {result.stdout}")
+                
+                # Update the current sink value
+                info_cmd = ['pactl', 'info']
+                logging.debug(f"Getting sink info with: {' '.join(info_cmd)}")
+                result = subprocess.run(info_cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    output = result.stdout
+                    logging.debug(f"pactl info output: {output}")
+                    for line in output.splitlines():
+                        if "Default Sink:" in line:
+                            self.current_sink = line.split(":")[-1].strip()
+                            logging.info(f"Current sink updated to: {self.current_sink}")
+                            break
+                else:
+                    logging.error(f"Failed to get sink info: {result.stderr}")
+                
+                # Get sink description for the toast message
+                sink_description = ""
+                try:
+                    sink_data = json.loads(self.sinks)
+                    for sink in sink_data:
+                        if sink.get('name') == sink_name:
+                            sink_description = sink.get('description', sink_name)
+                            break
+                except Exception as e:
+                    logging.error(f"Error parsing sink data: {e}")
+                    sink_description = sink_name
+                
+                logging.debug(f"Showing toast notification for sink: {sink_description}")
+                
+                # Show toast notification
+                js_script = f"""
+                console.log('Showing toast notification');
+                if (window.showToast) {{
+                    window.showToast('Audio output switched to {sink_description}', 3000);
+                    console.log('Toast function called');
+                }} else {{
+                    console.error('showToast function not available');
+                }}
+                """
+                self.webview.page().runJavaScript(js_script, lambda result: logging.debug("Toast notification script executed"))
+                
+                # Reset the close timer to give user time to see the notification
+                if self.close_timer and self.close_timer.isActive():
+                    self.close_timer.stop()
+                    logging.debug("Stopped existing close timer")
+                
+                self.close_timer = QTimer()
+                self.close_timer.setSingleShot(True)
+                self.close_timer.timeout.connect(self.hide_window)
+                self.close_timer.start(4000)  # Extended duration to see the notification
+                logging.debug("Started new close timer with 4000ms duration")
+                
+                # Update the display to reflect the new active sink
+                # We would need to refresh the sink list, but we'll let the next volume change do that
+        except Exception as e:
+            logging.error(f"Error changing sink: {e}", exc_info=True)
+            # Show toast notification for error
+            error_script = f"""
+            if (window.showToast) {{
+                window.showToast('Error switching audio output: {str(e).replace("'", "\\'")}', 3000);
+            }}
+            """
+            self.webview.page().runJavaScript(error_script)
+
 def server_accept_with_timeout(server, timeout):
     """Accept a connection with timeout handling"""
     try:
@@ -510,7 +850,7 @@ def server_accept_with_timeout(server, timeout):
     except socket.timeout:
         return None, None
     except Exception as e:
-        print(f"Accept error: {e}")
+        logging.error(f"Accept error: {e}")
         return None, None
 
 def send_update_to_server(args):
@@ -550,42 +890,80 @@ if __name__ == "__main__":
     parser.add_argument("--value", type=float, required=True, help="Value to display (e.g., volume percentage)")
     parser.add_argument("--muted", action="store_true", help="Show as muted (for volume)")
     parser.add_argument("--sinks", help="JSON array of available audio sinks")
+    parser.add_argument("--debug", action="store_true", help="Enable extra debug mode")
     args = parser.parse_args()
 
+    # Set extra debug mode if requested
+    if args.debug:
+        logging.info("Debug mode enabled")
+        os.environ['QTWEBENGINE_REMOTE_DEBUGGING'] = '9222'
+    
     # Try to send update to existing server
     if send_update_to_server(args):
-        print("Update sent to existing server")
+        logging.info("Update sent to existing server")
         sys.exit(0)
     
     # If we get here, we need to start a new server
-    print("Starting new OSD server")
+    logging.info("Starting new OSD server")
     
-    # Start the server in a separate process
-    if os.fork() == 0:
-        # This is the child process - it will become the server
-        app = QApplication(sys.argv)
-        window = OSDWindow()
-        
-        # Initialize content but don't show window yet
-        window.setWindowOpacity(0)  # Start invisible
-        window.template = args.template
-        window.value = args.value
-        window.muted = args.muted
-        window.sinks = args.sinks or '[]'
-        
-        # Start the event loop without explicitly showing the window
-        sys.exit(app.exec_())
-    else:
-        # This is the parent process - wait for server to start then send the message
-        # Give the server some time to initialize
-        max_retries = 5
-        for i in range(max_retries):
-            time.sleep(0.5)  # Half-second delay between attempts
-            if os.path.exists(LOCK_FILE):
-                # Try to connect to the new server
-                if send_update_to_server(args):
-                    print("Update sent to newly started server")
-                    sys.exit(0)
-            
-        print("Failed to connect to server after multiple attempts")
-        sys.exit(1)
+    # First make sure there are no other running instances
+    # This shouldn't happen normally, but better safe than sorry
+    try:
+        if os.path.exists(LOCK_FILE):
+            with open(LOCK_FILE, 'r') as f:
+                old_pid = f.read().strip()
+                logging.warning(f"Found old lock file with PID {old_pid}, attempting cleanup")
+                try:
+                    old_pid = int(old_pid)
+                    os.kill(old_pid, signal.SIGKILL)
+                    logging.info(f"Killed old process with PID {old_pid}")
+                except (ValueError, ProcessLookupError):
+                    logging.info("Old process not running, continuing")
+                except Exception as e:
+                    logging.warning(f"Error killing old process: {e}")
+            os.unlink(LOCK_FILE)
+    except Exception as e:
+        logging.warning(f"Error cleaning up old lock file: {e}")
+    
+    # Create application
+    app = QApplication(sys.argv)
+    
+    # Set application name for user settings
+    app.setApplicationName("VolumeOSD")
+    app.setOrganizationName("VolumeOSD")
+    
+    # Enable high-DPI scaling
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+        app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+        app.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+    
+    # Create main window, run app
+    window = OSDWindow()
+    
+    # Update content with provided arguments
+    window.template = args.template
+    window.value = args.value
+    window.muted = args.muted
+    window.sinks = args.sinks or "[]"
+    
+    # Show window (after values are set)
+    window.show()
+    
+    # Make sure window appears on top
+    window.raise_()
+    window.activateWindow()
+    
+    # Position window according to settings
+    window.position_window()
+    
+    # Main event loop
+    exit_code = app.exec_()
+    
+    # Proper cleanup upon exit
+    logging.info("Application exiting, cleaning up...")
+    if hasattr(window, 'cleanup'):
+        window.cleanup()
+    
+    # Return exit code
+    sys.exit(exit_code)
