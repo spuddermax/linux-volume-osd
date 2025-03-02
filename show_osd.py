@@ -31,7 +31,7 @@ try:
 
     logging.basicConfig(
         filename=LOG_FILE,
-        level=logging.DEBUG,
+        level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
@@ -47,7 +47,7 @@ except Exception as e:
     logging.error(f"Could not use {LOG_FILE}, falling back to {user_log_file}: {e}")
     LOG_FILE = user_log_file
 
-logging.info("=== OSD Application Starting ===")
+logging.debug("=== OSD Application Requested ===")
 
 # Socket for IPC
 PORT = 9876  # Use a fixed port for IPC
@@ -95,13 +95,13 @@ class JsBridge(QObject):
     @pyqtSlot(str)
     def selectSink(self, sink_name):
         """Method exposed to JavaScript to select a sink"""
-        logging.info(f"JsBridge: Received sink selection request for {sink_name}")
+        logging.debug(f"JsBridge: Received sink selection request for {sink_name}")
         self.window.select_sink(sink_name)
 
     @pyqtSlot()
     def pinWindow(self):
         """Method exposed to JavaScript to pin the window"""
-        logging.info("JsBridge: Received pin window request")
+        logging.debug("JsBridge: Received pin window request")
         self.window.pinned = not self.window.pinned
         # If self.window.pinned is False, reset the timer to hide the window
         if not self.window.pinned:
@@ -511,10 +511,10 @@ document.addEventListener('DOMContentLoaded', function() {
         self.close_timer.setSingleShot(True)
         self.close_timer.timeout.connect(self.hide_window)
         if not self.pinned:
-            logging.info("OSDWindow: window is not pinned, starting close timer")
+            logging.debug("OSDWindow: window is not pinned, starting close timer")
             self.close_timer.start(self.duration)
         else:
-            logging.info("OSDWindow: window is pinned, not starting close timer")
+            logging.debug("OSDWindow: window is pinned, not starting close timer")
     
     def position_window(self):
         """Position the window on the correct screen"""
@@ -804,9 +804,23 @@ document.addEventListener('DOMContentLoaded', function() {
 
     def select_sink(self, sink_name):
         """Set the specified sink as the default audio sink"""
-        logging.info(f"Selecting sink: {sink_name}")
+        logging.debug(f"Selecting sink: {sink_name}")
         try:
             if sink_name:
+                # Make sure we maintain the current mute state before changing the sink
+                if self.muted:
+                    cmd = ['pactl', 'set-sink-mute', sink_name, '1']
+                    logging.debug(f"Running command: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        logging.error(f"Command failed with return code {result.returncode}")
+                else:
+                    cmd = ['pactl', 'set-sink-mute', sink_name, '0']
+                    logging.debug(f"Running command: {' '.join(cmd)}")
+                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    if result.returncode != 0:
+                        logging.error(f"Command failed with return code {result.returncode}")
+
                 # Log the command we're about to run
                 cmd = ['pactl', 'set-default-sink', sink_name]
                 logging.debug(f"Running command: {' '.join(cmd)}")
@@ -829,7 +843,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     for line in output.splitlines():
                         if "Default Sink:" in line:
                             self.current_sink = line.split(":")[-1].strip()
-                            logging.info(f"Current sink updated to: {self.current_sink}")
+                            logging.debug(f"Current sink updated to: {self.current_sink}")
                             break
                 else:
                     logging.error(f"Failed to get sink info: {result.stderr}")
@@ -891,7 +905,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         # Refresh the display with the updated sink list
                         self.update_display()
-                        logging.info("Display refreshed with updated sink list")
+                        logging.debug("Display refreshed with updated sink list")
                 except Exception as e:
                     logging.error(f"Error refreshing sink list: {e}", exc_info=True)
                 
@@ -976,7 +990,7 @@ if __name__ == "__main__":
     
     # Try to send update to existing server
     if send_update_to_server(args):
-        logging.info("Update sent to existing server")
+        logging.debug("Update sent to existing server")
         sys.exit(0)
     
     # If we get here, we need to start a new server
