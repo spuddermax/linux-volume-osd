@@ -14,72 +14,99 @@ import re
 import subprocess
 import logging
 from datetime import datetime
+from dataclasses import dataclass
+from typing import Optional, List, Dict, Any, Union
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage, QWebEngineScript
 from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QUrl, QPoint, pyqtSignal, QObject, pyqtSlot
 from PyQt5.QtGui import QScreen, QCursor
 from PyQt5.QtWebChannel import QWebChannel
 
-# Setup logging
-LOG_FILE = '/var/log/show_osd.log'
-try:
-    # Try to create a log file with world-writable permissions
-    if not os.path.exists(LOG_FILE):
-        with open(LOG_FILE, 'w') as f:
-            pass
-        os.chmod(LOG_FILE, 0o666)  # World-writable
-
-    logging.basicConfig(
-        filename=LOG_FILE,
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-except Exception as e:
-    # Fallback to user's home directory if can't write to /var/log
-    user_log_file = os.path.expanduser("~/show_osd.log")
-    logging.basicConfig(
-        filename=user_log_file,
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    logging.error(f"Could not use {LOG_FILE}, falling back to {user_log_file}: {e}")
-    LOG_FILE = user_log_file
-
-logging.debug("=== OSD Application Requested ===")
-
-# Socket for IPC
-PORT = 9876  # Use a fixed port for IPC
+# Constants
+PORT = 9876  # Fixed port for IPC
 LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
-
-# Default settings
 DEFAULT_SETTINGS = {
     "window_width": 420,
-    "window_height": 160,
+    "window_height": 200,
     "x_offset": 0,
-    "y_offset": 40,
-    "duration": 2000
+    "y_offset": 1,
+    "duration": 2000,
+    "volume_step": 4
 }
-
-# Settings file path
 SETTINGS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "osd_settings.json")
+MAX_VOLUME = 150
+MAX_VOLUME_STEP = 20
+
+# Setup logging
+def setup_logging():
+    """Setup logging with fallback to user's home directory if needed"""
+    log_file = '/var/log/show_osd.log'
+    try:
+        # Try to create a log file with world-writable permissions
+        if not os.path.exists(log_file):
+            with open(log_file, 'w') as f:
+                pass
+            os.chmod(log_file, 0o666)  # World-writable
+
+        logging.basicConfig(
+            filename=log_file,
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+    except Exception as e:
+        # Fallback to user's home directory if can't write to /var/log
+        user_log_file = os.path.expanduser("~/show_osd.log")
+        logging.basicConfig(
+            filename=user_log_file,
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        logging.error(f"Could not use {log_file}, falling back to {user_log_file}: {e}")
+        log_file = user_log_file
+    
+    logging.debug("=== OSD Application Requested ===")
+    return log_file
+
+LOG_FILE = setup_logging()
+
+@dataclass
+class OsdArgs:
+    """Data class to hold OSD arguments"""
+    template: str = ""
+    value: float = 0.0
+    muted: bool = False
+    sinks: str = "[]"
+    debug: bool = False
 
 def load_settings():
-    """Load settings from settings file, or use defaults if file doesn't exist"""
+    """Load settings from JSON file or use defaults"""
     try:
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r') as f:
                 settings = json.load(f)
-            return settings
+                # Make sure we have all default settings
+                for key, value in DEFAULT_SETTINGS.items():
+                    if key not in settings:
+                        settings[key] = value
+                
+                # Enforce MAX_VOLUME_STEP limit
+                settings["volume_step"] = min(settings["volume_step"], MAX_VOLUME_STEP)
+                
+                return settings
         else:
             # Create default settings file if it doesn't exist
             with open(SETTINGS_FILE, 'w') as f:
                 json.dump(DEFAULT_SETTINGS, f, indent=4)
-            return DEFAULT_SETTINGS
+                
+        return DEFAULT_SETTINGS.copy()
+    
     except Exception as e:
-        print(f"Error loading settings: {e}")
-        return DEFAULT_SETTINGS
+        logging.error(f"Error loading settings: {e}")
+    
+    # Return defaults if we can't load settings
+    return DEFAULT_SETTINGS.copy()
 
 def get_active_sink():
     """Get the currently active audio sink"""
@@ -129,8 +156,8 @@ def is_sink_muted(sink):
 def set_sink_volume(sink, volume):
     """Set the volume of the specified sink"""
     try:
-        # Clamp volume between 0 and 150%
-        volume = max(0, min(150, volume))
+        # Clamp volume between 0 and MAX_VOLUME
+        volume = max(0, min(MAX_VOLUME, volume))
         logging.debug(f"Setting sink {sink} volume to {volume}%")
         subprocess.run(['pactl', 'set-sink-volume', sink, f"{volume}%"], capture_output=True, text=True)
         return volume
@@ -179,71 +206,64 @@ def get_available_sinks(active_sink):
         logging.error(f"Error getting available sinks: {e}")
         return []
 
-def volume_up():
-    """Increase volume by 2% and show OSD"""
+def create_osd_args(template, value, muted=False, debug=False):
+    """Create a common OSD arguments object"""
     sink = get_active_sink()
     if not sink:
         logging.error("No sink found")
-        return False
+        return None
         
-    current_volume = get_sink_volume(sink)
-    new_volume = current_volume + 2
-    if new_volume > 150:
-        new_volume = 150
-    
-    set_sink_volume(sink, new_volume)
-    muted = is_sink_muted(sink)
     sinks_json = json.dumps(get_available_sinks(sink))
     
-    # Create arguments for displaying the OSD
-    class Args:
-        pass
-    args = Args()
-    args.template = "volume"
-    args.value = new_volume
+    args = OsdArgs()
+    args.template = template
+    args.value = value
     args.muted = muted
     args.sinks = sinks_json
-    args.debug = False
+    args.debug = debug
     
-    # Send update to OSD
+    return args
+
+def display_osd(args):
+    """Send update to OSD server or start a new one"""
     if not send_update_to_server(args):
-        logging.info("Starting OSD for volume up")
+        logging.info(f"Starting OSD for {args.template}")
         start_osd(args)
-    
     return True
 
-def volume_down():
-    """Decrease volume by 2% and show OSD"""
+def volume_up():
+    """Increase volume by VOLUME_STEP% and show OSD"""
     sink = get_active_sink()
     if not sink:
         logging.error("No sink found")
         return False
         
     current_volume = get_sink_volume(sink)
-    new_volume = current_volume - 2
-    if new_volume < 0:
-        new_volume = 0
+    settings = load_settings()
+    new_volume = min(current_volume + settings["volume_step"], MAX_VOLUME)
     
     set_sink_volume(sink, new_volume)
     muted = is_sink_muted(sink)
-    sinks_json = json.dumps(get_available_sinks(sink))
     
-    # Create arguments for displaying the OSD
-    class Args:
-        pass
-    args = Args()
-    args.template = "volume"
-    args.value = new_volume
-    args.muted = muted
-    args.sinks = sinks_json
-    args.debug = False
+    args = create_osd_args("volume", new_volume, muted)
+    return display_osd(args)
+
+def volume_down():
+    """Decrease volume by VOLUME_STEP% and show OSD"""
+    sink = get_active_sink()
+    if not sink:
+        logging.error("No sink found")
+        return False
+        
+    current_volume = get_sink_volume(sink)
+    settings = load_settings()
+    new_volume = max(current_volume - settings["volume_step"], 0)
     
-    # Send update to OSD
-    if not send_update_to_server(args):
-        logging.info("Starting OSD for volume down")
-        start_osd(args)
+    set_sink_volume(sink, new_volume)
+    muted = is_sink_muted(sink)
     
-    return True
+    args = create_osd_args("volume", new_volume, muted)
+    return display_osd(args)
 
 def volume_mute():
     """Toggle mute status and show OSD"""
@@ -257,31 +277,13 @@ def volume_mute():
     
     # Toggle mute
     set_sink_mute(sink, not muted)
-    
-    # Update muted status after toggle
     muted = not muted
-    sinks_json = json.dumps(get_available_sinks(sink))
     
-    # Create arguments for displaying the OSD
-    class Args:
-        pass
-    args = Args()
-    args.template = "volume"
-    args.value = current_volume
-    args.muted = muted
-    args.sinks = sinks_json
-    args.debug = False
-    
-    # Send update to OSD
-    if not send_update_to_server(args):
-        logging.info("Starting OSD for volume mute toggle")
-        start_osd(args)
-    
-    return True
+    args = create_osd_args("volume", current_volume, muted)
+    return display_osd(args)
 
-def start_osd(args):
-    """Start OSD application with given arguments"""
-    # First make sure there are no other running instances
+def clean_up_old_instance():
+    """Clean up any existing instance"""
     try:
         if os.path.exists(LOCK_FILE):
             with open(LOCK_FILE, 'r') as f:
@@ -298,6 +300,20 @@ def start_osd(args):
             os.unlink(LOCK_FILE)
     except Exception as e:
         logging.warning(f"Error cleaning up old lock file: {e}")
+
+def create_lock_file():
+    """Create a lock file to indicate the server is running"""
+    try:
+        with open(LOCK_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+        logging.debug(f"Created lock file at {LOCK_FILE}")
+    except Exception as e:
+        logging.warning(f"Could not create lock file: {e}")
+
+def start_osd(args):
+    """Start OSD application with given arguments"""
+    # First make sure there are no other running instances
+    clean_up_old_instance()
     
     # Create application
     app = QApplication(sys.argv)
@@ -403,32 +419,10 @@ class OSDWindow(QMainWindow):
         self.setup_ui()
         
         # Make the window sticky (visible on all workspaces)
-        if QApplication.instance().platformName() == "xcb":
-            try:
-                import Xlib
-                import Xlib.display
-                display = Xlib.display.Display()
-                window_id = int(self.winId())
-                window = display.create_resource_object('window', window_id)
-                
-                # Set _NET_WM_DESKTOP to all desktops
-                desktop_atom = display.intern_atom('_NET_WM_DESKTOP')
-                window.change_property(desktop_atom, Xlib.Xatom.CARDINAL, 32, [0xFFFFFFFF])
-                
-                # Also set _NET_WM_STATE_STICKY for better compatibility
-                state_atom = display.intern_atom('_NET_WM_STATE')
-                sticky_atom = display.intern_atom('_NET_WM_STATE_STICKY')
-                window.change_property(state_atom, Xlib.Xatom.ATOM, 32, [sticky_atom])
-                
-                display.sync()
-                logging.debug("Window set to visible on all workspaces")
-            except ImportError:
-                logging.warning("python-xlib not installed, cannot set window to all workspaces")
-            except Exception as e:
-                logging.error(f"Error setting window to all workspaces: {e}")
+        self.ensure_window_sticky()
         
         # Create lock file to signal we're running
-        self.create_lock_file()
+        create_lock_file()
         
         # Start server in separate thread
         self.start_server()
@@ -438,15 +432,6 @@ class OSDWindow(QMainWindow):
         signal.signal(signal.SIGTERM, self.signal_handler)
         
         logging.debug("OSDWindow initialization complete")
-    
-    def create_lock_file(self):
-        """Create a lock file to indicate the server is running"""
-        try:
-            with open(LOCK_FILE, 'w') as f:
-                f.write(str(os.getpid()))
-            logging.debug(f"Created lock file at {LOCK_FILE}")
-        except Exception as e:
-            logging.warning(f"Could not create lock file: {e}")
     
     def signal_handler(self, signum, frame):
         """Handle termination signals"""
@@ -1029,40 +1014,30 @@ document.addEventListener('DOMContentLoaded', function() {
         self.position_window()
 
     def ensure_window_sticky(self):
-        """Ensure the window remains visible on all workspaces"""
+        """Make the window sticky (visible on all workspaces)"""
         if QApplication.instance().platformName() == "xcb":
             try:
                 import Xlib
                 import Xlib.display
-                from Xlib import X
-                
                 display = Xlib.display.Display()
                 window_id = int(self.winId())
                 window = display.create_resource_object('window', window_id)
-                root = display.screen().root
                 
-                # Set sticky state using client message (more reliable than just setting property)
-                state_atom = display.intern_atom('_NET_WM_STATE')
-                sticky_atom = display.intern_atom('_NET_WM_STATE_STICKY')
-                
-                event = Xlib.protocol.event.ClientMessage(
-                    window=window,
-                    client_type=state_atom,
-                    data=(32, [1, sticky_atom, 0, 0, 0])  # 1 = add/set
-                )
-                
-                mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
-                root.send_event(event, event_mask=mask)
-                
-                # Also set _NET_WM_DESKTOP to all desktops
+                # Set _NET_WM_DESKTOP to all desktops
                 desktop_atom = display.intern_atom('_NET_WM_DESKTOP')
                 window.change_property(desktop_atom, Xlib.Xatom.CARDINAL, 32, [0xFFFFFFFF])
                 
+                # Also set _NET_WM_STATE_STICKY for better compatibility
+                state_atom = display.intern_atom('_NET_WM_STATE')
+                sticky_atom = display.intern_atom('_NET_WM_STATE_STICKY')
+                window.change_property(state_atom, Xlib.Xatom.ATOM, 32, [sticky_atom])
+                
                 display.sync()
+                logging.debug("Window set to visible on all workspaces")
             except ImportError:
-                print("Warning: python-xlib not installed, cannot set window to all workspaces")
+                logging.warning("python-xlib not installed, cannot set window to all workspaces")
             except Exception as e:
-                print(f"Error ensuring window is sticky: {e}")
+                logging.error(f"Error setting window to all workspaces: {e}")
 
     def pin_window(self):
         """Pin the window to the current workspace"""
@@ -1233,7 +1208,7 @@ def send_update_to_server(args):
         client.close()
         return True
     except Exception as e:
-        print(f"Failed to send update: {e}")
+        logging.error(f"Failed to send update: {e}")
         # If server failed to respond, clean up the stale lock
         try:
             os.unlink(LOCK_FILE)
@@ -1241,7 +1216,8 @@ def send_update_to_server(args):
             pass
         return False
 
-if __name__ == "__main__":
+def main():
+    """Main entry point"""
     parser = argparse.ArgumentParser(description="Display an OSD popup or control volume")
     
     # Add a command group
@@ -1284,12 +1260,24 @@ if __name__ == "__main__":
     if args.value is None:
         parser.error("--value is required unless a volume command is specified")
     
+    # Convert args to OsdArgs dataclass
+    osd_args = OsdArgs(
+        template=args.template,
+        value=args.value,
+        muted=args.muted,
+        sinks=args.sinks if args.sinks else "[]",
+        debug=args.debug
+    )
+    
     # Try to send update to existing server
-    if send_update_to_server(args):
+    if send_update_to_server(osd_args):
         logging.debug("Update sent to existing server")
         sys.exit(0)
     
     # If we get here, we need to start a new server
     logging.info("Starting new OSD server")
     
-    start_osd(args)
+    start_osd(osd_args)
+
+if __name__ == "__main__":
+    main()
