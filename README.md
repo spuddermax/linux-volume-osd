@@ -1,5 +1,7 @@
 # Linux Volume OSD Popup Project
 
+**Current Version: 2.0**
+
 A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebEngine.
 
 ## Features
@@ -179,3 +181,21 @@ Feel free to open issues, submit pull requests, or contribute with new features.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Version History
+
+### Version 2.0
+- Added pinning functionality
+- Added listing of all available audio sinks with selection of the active sink
+- Added configurable volume step (customize in settings file)
+- Volume step can be set between 1-20 (default: 2)
+- Code refactoring for improved maintainability
+- Enhanced error handling and logging
+- Various performance improvements
+
+### Version 1.0
+- Initial release
+- Basic volume control with OSD display
+- Support for mute/unmute
+- Multi-screen support
+- Customizable position and duration

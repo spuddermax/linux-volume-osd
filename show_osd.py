@@ -433,6 +433,21 @@ class OSDWindow(QMainWindow):
         
         logging.debug("OSDWindow initialization complete")
     
+    def show(self):
+        """Override show to ensure sticky windows"""
+        super().show()
+        # Ensure window is visible on all workspaces
+        self.ensure_window_sticky()
+        # Make sure it's on top
+        self.raise_()
+        self.activateWindow()
+
+    def showEvent(self, event):
+        """Handle QShowEvent to ensure sticky window"""
+        super().showEvent(event)
+        # Wait a short time to ensure window is fully shown before making it sticky
+        QTimer.singleShot(100, self.ensure_window_sticky)
+
     def signal_handler(self, signum, frame):
         """Handle termination signals"""
         logging.info(f"Received signal {signum}, cleaning up")
@@ -957,6 +972,9 @@ document.addEventListener('DOMContentLoaded', function() {
         except Exception as e:
             logging.error(f"Error updating display: {e}")
 
+        # Make sure window is sticky after updating display
+        self.ensure_window_sticky()
+
     def get_index_content(self):
         """Get the content of the index.html template file"""
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1019,25 +1037,67 @@ document.addEventListener('DOMContentLoaded', function() {
             try:
                 import Xlib
                 import Xlib.display
+                from Xlib import X
+                
                 display = Xlib.display.Display()
                 window_id = int(self.winId())
                 window = display.create_resource_object('window', window_id)
+                root = display.screen().root
                 
                 # Set _NET_WM_DESKTOP to all desktops
                 desktop_atom = display.intern_atom('_NET_WM_DESKTOP')
                 window.change_property(desktop_atom, Xlib.Xatom.CARDINAL, 32, [0xFFFFFFFF])
                 
-                # Also set _NET_WM_STATE_STICKY for better compatibility
+                # Set _NET_WM_STATE_STICKY for better compatibility
                 state_atom = display.intern_atom('_NET_WM_STATE')
                 sticky_atom = display.intern_atom('_NET_WM_STATE_STICKY')
+                
+                # First try with change_property
                 window.change_property(state_atom, Xlib.Xatom.ATOM, 32, [sticky_atom])
+                
+                # Then also try with client message (more reliable)
+                event = Xlib.protocol.event.ClientMessage(
+                    window=window,
+                    client_type=state_atom,
+                    data=(32, [1, sticky_atom, 0, 0, 0])  # 1 = add/set
+                )
+                
+                mask = X.SubstructureRedirectMask | X.SubstructureNotifyMask
+                root.send_event(event, event_mask=mask)
+                
+                # Also try with _NET_WM_STATE_ABOVE to make sure it's always on top
+                above_atom = display.intern_atom('_NET_WM_STATE_ABOVE')
+                event = Xlib.protocol.event.ClientMessage(
+                    window=window,
+                    client_type=state_atom,
+                    data=(32, [1, above_atom, 0, 0, 0])  # 1 = add/set
+                )
+                root.send_event(event, event_mask=mask)
                 
                 display.sync()
                 logging.debug("Window set to visible on all workspaces")
             except ImportError:
                 logging.warning("python-xlib not installed, cannot set window to all workspaces")
+                # Try alternative approach using subprocess
+                try:
+                    # Try using wmctrl as a fallback
+                    window_id_hex = hex(int(self.winId()))
+                    subprocess.run(['wmctrl', '-i', '-r', window_id_hex, '-b', 'add,sticky'], 
+                                  check=False, capture_output=True)
+                    logging.debug("Used wmctrl to make window sticky")
+                except Exception as subproc_error:
+                    logging.warning(f"Fallback to wmctrl also failed: {subproc_error}")
             except Exception as e:
                 logging.error(f"Error setting window to all workspaces: {e}")
+                # Try alternative approach
+                try:
+                    # Try using wmctrl as a fallback
+                    window_id_hex = hex(int(self.winId()))
+                    subprocess.run(['wmctrl', '-i', '-r', window_id_hex, '-b', 'add,sticky'], 
+                                  check=False, capture_output=True)
+                    logging.debug("Used wmctrl to make window sticky")
+                except Exception as subproc_error:
+                    logging.warning(f"Fallback to wmctrl also failed: {subproc_error}")
 
     def pin_window(self):
         """Pin the window to the current workspace"""
