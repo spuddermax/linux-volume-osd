@@ -12,6 +12,16 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - Designed for Linux and integrated with PulseAudio/Pipewire.
 - Tested to run successfully in Mint 22 MATE and Mint 22.1 Cinnamon.
 
+## Screenshots
+
+OSD Excess Volume with Opacity Example
+
+![OSD Excess Volume with Opacity Example](screenshots/osd_130.png)
+
+OSD In Action
+
+![OSD In Action](screenshots/osd_example.gif)
+
 ## Installation Requirements
 
 - **Python 3.6+**
@@ -22,15 +32,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
   ```bash
   sudo apt install python3-pyqt5 python3-pyqt5.qtwebengine
   ```
-## Screenshots
 
-OSD Excess Volume with Opacity Example
-
-![OSD Excess Volume with Opacity Example](screenshots/osd_130.png)
-
-OSD In Action
-
-![OSD In Action](screenshots/osd_example.gif)
 
 ## Setup
 
@@ -67,14 +69,6 @@ Run the server directly with a custom value:
    ./call_osd.sh --template volume --value 75
    ```
 
-## Bonus Script
-
-An optional low volume adjuster script is included, `./lowvolume.sh`, and was created to allow one to adjust the
-low-end volume on headphones or whatever device one might need. The low-end volume was found to be too loud, and
-dropping the volume to around 20% in the case in question would be too loud for the bottom end, but going less
-than 20% the sound would mute. Thus, this was built so at least at around 20% the volume is barely audible.
-Use at your own discretion.
-
 ## Usage
 
 All volume controls are now integrated into the `call_osd.sh` wrapper script:
@@ -88,20 +82,22 @@ All volume controls are now integrated into the `call_osd.sh` wrapper script:
 
 The OSD can be configured using the `osd_settings.json` file which is automatically created on first run. This file allows you to customize:
 
-- `window_width`: Width of the OSD window in pixels (default: 420)
-- `window_height`: Height of the OSD window in pixels (default: 160)
+- `window_width`: Width of the OSD window in pixels
+- `window_height`: Height of the OSD window in pixels
 - `x_offset`: Horizontal position of the OSD (0 for center, positive values offset from right edge, negative values offset from left edge)
 - `y_offset`: Vertical position of the OSD (0 for center, positive values offset from bottom edge, negative values offset from top edge)
 - `duration`: How long the OSD remains visible (in milliseconds)
+- `volume_step`: Amount to increase/decrease volume with each volume-up/volume-down command (max: 20)
 
 Example settings file:
 ```json
 {
     "window_width": 420,
-    "window_height": 160,
+    "window_height": 200,
     "x_offset": 0,
     "y_offset": 40,
-    "duration": 2000
+    "duration": 2000,
+    "volume_step": 5
 }
 ```
 
@@ -112,8 +108,8 @@ Changes to the settings file take effect immediately without needing to restart 
 The OSD supports the following command-line arguments:
 
 ### Volume Control Commands
-- `volume-up`: Increase volume by 2%
-- `volume-down`: Decrease volume by 2%
+- `volume-up`: Increase volume by the configured volume step (customizable in settings file)
+- `volume-down`: Decrease volume by the configured volume step (customizable in settings file)
 - `volume-mute`: Toggle mute state
 
 ### Advanced OSD Options
@@ -122,7 +118,7 @@ The OSD supports the following command-line arguments:
 - `--muted`: Flag to show the muted state (for volume)
 - `--debug`: Enable extra debug mode
 
-Note: Display duration is controlled via the settings file.
+Note: Display duration and volume step are controlled via the settings file.
 
 ## Architecture
 
@@ -167,6 +163,14 @@ You can adjust the window dimensions in the settings file to accommodate your te
 
 You can create your own custom key bindings to replace the default volume controls of your system as desired.
 Ask Google or your favorite AI how to do this if you're not sure.
+
+## Bonus Script
+
+An optional low volume adjuster script is included, `./lowvolume.sh`, and was created to allow one to adjust the
+low-end volume on headphones or whatever device one might need. The low-end volume was found to be too loud, and
+dropping the volume to around 20% in the case in question would be too loud for the bottom end, but going less
+than 20% the sound would mute. Thus, this was built so at least at around 20% the volume is barely audible.
+Use at your own discretion.
 
 ## Contributing
 
