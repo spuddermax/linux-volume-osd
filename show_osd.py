@@ -26,10 +26,10 @@ from PyQt5.QtWebChannel import QWebChannel
 PORT = 9876  # Fixed port for IPC
 LOCK_FILE = os.path.join(tempfile.gettempdir(), 'show_osd.lock')
 DEFAULT_SETTINGS = {
-    "window_width": 420,
-    "window_height": 200,
+    "window_width": 416,
+    "window_height": 205,
     "x_offset": 0,
-    "y_offset": 1,
+    "y_offset": 40,
     "duration": 2000,
     "volume_step": 4
 }
@@ -99,7 +99,7 @@ def load_settings():
             # Create default settings file if it doesn't exist
             with open(SETTINGS_FILE, 'w') as f:
                 json.dump(DEFAULT_SETTINGS, f, indent=4)
-                
+
         return DEFAULT_SETTINGS.copy()
     
     except Exception as e:
