@@ -1,171 +1,39 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>OSD Popup</title>
-    <script type="text/javascript" src="qwebchannel.js"></script>
-    <script type="text/javascript" src="sink_selector.js"></script>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background: rgba(0, 0, 0, 0);
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-        }
-        #content {
-            padding: 0px;
-            margin: 0px;
-            text-align: center;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
-        /* Toast notification styles */
-        .toast-container {
-            position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-        }
-        .toast {
-            background: rgba(50, 50, 50, 0.8);
-            color: white;
-            padding: 8px 15px;
-            border-radius: 4px;
-            margin-top: 5px;
-            font-size: 14px;
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .toast.show {
-            opacity: 1;
-        }
-    </style>
-</head>
-<body>
-    <div id="content">
-        <!-- Template content will be injected here -->
-    </div>
-    <!-- <div id="toast-container" class="toast-container"> -->
-        <!-- Toast notifications will be added dynamically -->
-    <!-- </div> -->
-    
-    <script>
-        // // Function to show toast notification
-        // function showToast(message, duration) {
-        //     console.log("showToast called with: " + message);
-        //     const container = document.getElementById('toast-container');
-        //     const toast = document.createElement('div');
-        //     toast.className = 'toast';
-        //     toast.textContent = message;
-        //     container.appendChild(toast);
-            
-        //     // Trigger reflow to enable transition
-        //     void toast.offsetWidth;
-        //     toast.classList.add('show');
-            
-        //     setTimeout(() => {
-        //         toast.classList.remove('show');
-        //         setTimeout(() => {
-        //             container.removeChild(toast);
-        //         }, 300); // Wait for fade out animation
-        //     }, duration || 2000);
-        // }
-        
-        // // Make the function available globally
-        // window.showToast = showToast;
-        
-        // Debug helper
-        document.addEventListener('click', function(e) {
-            console.log('Document clicked at: ' + e.clientX + ', ' + e.clientY);
-            console.log('Target: ', e.target);
-            if (window.bridge) {
-                window.bridge.log('Document clicked, bridge is available');
-            } else {
-                console.warn('Bridge not available on document click');
-            }
-        });
+	<head>
+		<meta charset="UTF-8" />
+		<title>OSD Popup</title>
+		<script type="text/javascript" src="qwebchannel.js"></script>
+		<script type="text/javascript" src="sink_selector.js"></script>
+		<style>
+			body {
+				margin: 0;
+				padding: 0;
+				background: rgba(0, 0, 0, 0);
+				font-family: Arial, sans-serif;
+				display: flex;
+				justify-content: center;
+				align-items: center;
+				overflow: hidden;
+				transform: scale(1);
+				transform-origin: top center;
+			}
+			#content {
+				padding: 0px;
+				margin: 0px;
+				text-align: center;
+				display: flex;
+				flex-direction: column;
+				justify-content: center;
+				align-items: center;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="content">
+			<!-- Template content will be injected here -->
+		</div>
 
-        // Initialize the WebChannel for communication with Python
-        (function initWebChannel() {
-            console.log("Initializing WebChannel...");
-            
-            // Setup a global placeholder for our bridge until it's ready
-            if (!window.bridge) {
-                // Temporary bridge with logging until the real one is available
-                window.bridge = {
-                    _isPlaceholder: true,
-                    log: function(msg) { 
-                        console.log("Bridge placeholder: " + msg);
-                    },
-                    selectSink: function(sinkName) {
-                        console.log("Bridge placeholder - selectSink: " + sinkName);
-                        showToast("Trying to connect to audio system...", 2000);
-                    }
-                };
-            }
-            
-            function connectWebChannel() {
-                if (typeof QWebChannel === 'undefined') {
-                    console.error("QWebChannel is not defined! Make sure qwebchannel.js is loaded properly.");
-                    setTimeout(connectWebChannel, 500);
-                    return;
-                }
-                
-                try {
-                    console.log("Setting up QWebChannel...");
-                    new QWebChannel(qt.webChannelTransport, function(channel) {
-                        if (channel.objects && channel.objects.bridge) {
-                            // Replace our placeholder with the real bridge
-                            console.log("Bridge object connected successfully!");
-                            
-                            // Store the old bridge to check if it was a placeholder
-                            const wasPlaceholder = window.bridge && window.bridge._isPlaceholder;
-                            
-                            // Set the real bridge
-                            window.bridge = channel.objects.bridge;
-                            
-                            // Log the successful connection
-                            window.bridge.log("WebChannel bridge connected successfully");
-                            
-                            // Set up the sinkSelected function that the volume template will use
-                            window.sinkSelected = function(sinkName) {
-                                console.log("Global sinkSelected called with: " + sinkName);
-                                window.bridge.selectSink(sinkName);
-                                return true;
-                            };
-                            
-                            if (wasPlaceholder) {
-                                showToast("Connection established", 1000);
-                            }
-                        } else {
-                            console.error("Bridge object not found in channel objects!");
-                            setTimeout(connectWebChannel, 500);
-                        }
-                    });
-                } catch (error) {
-                    console.error("Error in QWebChannel setup:", error);
-                    setTimeout(connectWebChannel, 1000);
-                }
-            }
-            
-            // Try to connect immediately
-            connectWebChannel();
-            
-            // And also set a backup timer (sometimes qt.webChannelTransport isn't available immediately)
-            setTimeout(function() {
-                if (window.bridge && window.bridge._isPlaceholder) {
-                    console.log("Still using placeholder bridge after timeout, retrying connection...");
-                    connectWebChannel();
-                }
-            }, 1000);
-        })();
-    </script>
-</body>
+		<script></script>
+	</body>
 </html>

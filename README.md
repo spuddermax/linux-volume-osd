@@ -9,7 +9,7 @@ A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebE
 - Simple HTML and CSS styling for ease of customization.
 - Uses a persistent server to update content smoothly.
 - Persists across all Workspace, and appears on the screen where the mouse cursor resides.
-- Designed for Linux and integrated with Pipewire.
+- Designed for Linux and integrated with PulseAudio/Pipewire.
 - Tested to run successfully in Mint 22 MATE and Mint 22.1 Cinnamon.
 
 ## Installation Requirements
@@ -52,19 +52,29 @@ OSD Opacity Example
 
 2. Make sure the scripts are executable:
    ```bash
-   chmod +x run_osd.sh show_osd.py volume-up.sh volume-down.sh volume-mute.sh lowvolume.sh
+   chmod +x call_osd.sh show_osd.py lowvolume.sh
    ```
 
-3. To run the OSD run the server wrapper script directly, or run any of the three volume adjustment scripts and the server will be started automatically, e.g.:
+3. To run the OSD, use the wrapper script with the appropriate command:
 
 Volume up:
    ```bash
-   ./volume-up.sh
+   ./call_osd.sh volume-up
    ```
 
-Run the server directly (This will start the server in the background, and you will need to use a kill command or kill it from the System Monitor if you want it to stop. Better handling of this to come later, I hope):
+Volume down:
    ```bash
-   ./run_osd.sh --template volume --value 75
+   ./call_osd.sh volume-down
+   ```
+
+Mute/Unmute:
+   ```bash
+   ./call_osd.sh volume-mute
+   ```
+
+Run the server directly with a custom value:
+   ```bash
+   ./call_osd.sh --template volume --value 75
    ```
 
 ## Bonus Script
@@ -77,9 +87,11 @@ Use at your own discretion.
 
 ## Usage
 
-- **Volume Up:** `./volume-up.sh`  
-- **Volume Down:** `./volume-down.sh`  
-- **Mute/Unmute:** `./volume-mute.sh`  
+All volume controls are now integrated into the `call_osd.sh` wrapper script:
+
+- **Volume Up:** `./call_osd.sh volume-up`  
+- **Volume Down:** `./call_osd.sh volume-down`  
+- **Mute/Unmute:** `./call_osd.sh volume-mute`  
 - **Set Low Volume (optional):** `./lowvolume.sh`  
 
 ## Configuration
@@ -109,11 +121,28 @@ Changes to the settings file take effect immediately without needing to restart 
 
 The OSD supports the following command-line arguments:
 
+### Volume Control Commands
+- `volume-up`: Increase volume by 2%
+- `volume-down`: Decrease volume by 2%
+- `volume-mute`: Toggle mute state
+
+### Advanced OSD Options
 - `--template`: HTML template name (e.g., volume)
 - `--value`: Value to display (e.g., volume percentage)
 - `--muted`: Flag to show the muted state (for volume)
+- `--debug`: Enable extra debug mode
 
 Note: Display duration is controlled via the settings file.
+
+## Architecture
+
+The system uses a client-server architecture:
+
+1. The `call_osd.sh` script is the entry point that handles command-line options
+2. The `show_osd.py` script contains the main Python code that:
+   - Controls audio devices through PulseAudio
+   - Manages the OSD display through PyQt5
+   - Maintains a socket server for updates without restarting
 
 ## Customization
 

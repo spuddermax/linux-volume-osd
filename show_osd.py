@@ -730,7 +730,7 @@ document.addEventListener('DOMContentLoaded', function() {
         self.muted = muted
         self.sinks = sinks
 
-        logging.info(f"sinks={sinks}")
+        logging.debug(f"sinks={sinks}")
         
         # Load settings file (reload each time to pick up changes)
         settings = load_settings()
@@ -780,6 +780,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     def position_window(self):
         """Position the window on the correct screen"""
+        # If pinned, don't move the window
+        if self.pinned:
+            return
+
         # Load current settings
         settings = load_settings()
         x_offset = settings.get("x_offset", 0)
