@@ -78,6 +78,7 @@ All volume controls are now integrated into the `call_osd.sh` wrapper script:
 - **Volume Up:** `./call_osd.sh volume-up`  
 - **Volume Down:** `./call_osd.sh volume-down`  
 - **Mute/Unmute:** `./call_osd.sh volume-mute`  
+- **Start Server Without Display:** `./call_osd.sh --start`
 - **Set Low Volume (optional):** `./lowvolume.sh`  
 
 ## Configuration
@@ -114,6 +115,9 @@ The OSD supports the following command-line arguments:
 - `volume-down`: Decrease volume by the configured volume step (customizable in settings file)
 - `volume-mute`: Toggle mute state
 
+### Server Management
+- `--start`: Start the OSD server without displaying any window (useful for background initialization)
+
 ### Advanced OSD Options
 - `--template`: HTML template name (e.g., volume)
 - `--value`: Value to display (e.g., volume percentage)
@@ -131,6 +135,10 @@ The system uses a client-server architecture:
    - Controls audio devices through PulseAudio
    - Manages the OSD display through PyQt5
    - Maintains a socket server for updates without restarting
+
+The `--start` parameter allows you to initialize just the server component without displaying any OSD window. This is useful for:
+- Pre-launching the server at system startup to minimize delay on first use
+- Running the server in the background when you don't need visual feedback immediately
 
 ## Customization
 
@@ -183,6 +191,9 @@ Feel free to open issues, submit pull requests, or contribute with new features.
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Version History
+
+### Version 2.1
+- Added `--start` parameter to initialize the server without displaying a window (useful for initialization at startup to avoid initial display lag)
 
 ### Version 2.0
 - Added pinning functionality

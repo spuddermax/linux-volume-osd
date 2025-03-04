@@ -79,6 +79,7 @@ class OsdArgs:
     muted: bool = False
     sinks: str = "[]"
     debug: bool = False
+    show_window: bool = True
 
 def load_settings():
     """Load settings from JSON file or use defaults"""
@@ -337,15 +338,19 @@ def start_osd(args):
     window.muted = args.muted
     window.sinks = args.sinks
     
-    # Show window (after values are set)
-    window.show()
-    
-    # Make sure window appears on top
-    window.raise_()
-    window.activateWindow()
-    
-    # Position window according to settings
-    window.position_window()
+    # Only show window if show_window flag is True
+    if args.show_window:
+        # Show window (after values are set)
+        window.show()
+        
+        # Make sure window appears on top
+        window.raise_()
+        window.activateWindow()
+        
+        # Position window according to settings
+        window.position_window()
+    else:
+        logging.info("Starting server without showing window")
     
     # Main event loop
     exit_code = app.exec_()
@@ -1278,13 +1283,14 @@ def send_update_to_server(args):
 
 def main():
     """Main entry point"""
-    parser = argparse.ArgumentParser(description="Display an OSD popup or control volume")
+    parser = argparse.ArgumentParser(description="Display an OSD popup, control volume, or start the OSD server")
     
     # Add a command group
     command_group = parser.add_mutually_exclusive_group()
     command_group.add_argument("--volume-up", action="store_true", help="Increase volume by 2%")
     command_group.add_argument("--volume-down", action="store_true", help="Decrease volume by 2%")
     command_group.add_argument("--volume-mute", action="store_true", help="Toggle mute state")
+    command_group.add_argument("--start", action="store_true", help="Start the OSD server without displaying anything")
     
     # Legacy OSD display arguments
     parser.add_argument("--template", help="HTML template name (e.g., volume)")
@@ -1312,6 +1318,19 @@ def main():
     elif args.volume_mute:
         logging.info("Processing volume mute command")
         volume_mute()
+        sys.exit(0)
+    elif args.start:
+        logging.info("Starting OSD server without displaying anything")
+        # Create default OsdArgs for starting the server
+        osd_args = OsdArgs(
+            template="volume",  # Default template
+            value=0.0,
+            muted=False,
+            sinks="[]",
+            debug=args.debug,
+            show_window=False  # Set show_window to False for --start
+        )
+        start_osd(osd_args)
         sys.exit(0)
     
     # Legacy OSD display handling
