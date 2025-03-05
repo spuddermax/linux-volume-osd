@@ -1,6 +1,6 @@
 # Linux Volume OSD Popup Project
 
-**Current Version: 2.0.1**
+**Current Version: 2.1**
 
 A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebEngine.
 
@@ -176,11 +176,30 @@ Ask Google or your favorite AI how to do this if you're not sure.
 
 ## Bonus Script
 
-An optional low volume adjuster script is included, `./lowvolume.sh`, and was created to allow one to adjust the
-low-end volume on headphones or whatever device one might need. The low-end volume was found to be too loud, and
-dropping the volume to around 20% in the case in question would be too loud for the bottom end, but going less
-than 20% the sound would mute. Thus, this was built so at least at around 20% the volume is barely audible.
-Use at your own discretion.
+An optional low volume adjuster script is included, `./lowvolume.sh`, which allows fine-tuned volume control for any audio output device. This script is particularly useful when:
+- The default low-end volume is too loud for headphones
+- You need precise volume control between 0.1% and 100%
+- You want to set different volume levels for different audio devices
+
+Features:
+- Interactive selection of audio output devices
+- Precise volume level control from 0.1% to 100% (0.001 to 1.000)
+- Supports PipeWire audio sinks
+- Validates input to ensure proper volume levels
+- Automatic installation of required dependencies (jq)
+
+Example use cases:
+- Setting headphone volume to very low levels (e.g., 0.2% for nighttime listening)
+- Adjusting specific output devices without affecting others
+- Fine-tuning volume levels beyond what the system UI allows
+
+To use:
+```bash
+./lowvolume.sh
+```
+Follow the interactive prompts to:
+1. Select an audio output device from the list
+2. Enter a volume level between 0.001 (0.1%) and 1.000 (100%)
 
 ## Contributing
 
@@ -193,6 +212,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Version History
 
 ### Version 2.1
+- Updated features of volume adjuster script `./lowvolume.sh` to allow precise volume control between 0.1% and 100%
+- Changed default font of OSD to Ubuntu
+
+### Version 2.0.1
 - Added `--start` parameter to initialize the server without displaying a window (useful for initialization at startup to avoid initial display lag)
 
 ### Version 2.0
