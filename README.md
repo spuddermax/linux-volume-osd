@@ -1,6 +1,6 @@
 # Linux Volume OSD Popup Project
 
-**Current Version: 2.1**
+**Current Version: 2.2**
 
 A Python-based On-Screen Display (OSD) for volume control using PyQt5 and QtWebEngine.
 
@@ -79,7 +79,8 @@ All volume controls are now integrated into the `call_osd.sh` wrapper script:
 - **Volume Down:** `./call_osd.sh volume-down`  
 - **Mute/Unmute:** `./call_osd.sh volume-mute`  
 - **Start Server Without Display:** `./call_osd.sh --start`
-- **Set Low Volume (optional):** `./lowvolume.sh`  
+- **Set Low Volume (interactive):** `./lowvolume.sh`  
+- **Apply Default Low Volume:** `./lowvolume.sh --defaults`
 
 ## Configuration
 
@@ -187,11 +188,13 @@ Features:
 - Supports PipeWire audio sinks
 - Validates input to ensure proper volume levels
 - Automatic installation of required dependencies (jq)
+- Save chosen settings as defaults and apply them automatically with a single command
 
 Example use cases:
 - Setting headphone volume to very low levels (e.g., 0.2% for nighttime listening)
 - Adjusting specific output devices without affecting others
 - Fine-tuning volume levels beyond what the system UI allows
+- Quickly applying your preferred volume settings without manual selection
 
 To use:
 ```bash
@@ -200,6 +203,14 @@ To use:
 Follow the interactive prompts to:
 1. Select an audio output device from the list
 2. Enter a volume level between 0.001 (0.1%) and 1.000 (100%)
+3. Optionally save these settings as defaults for future use
+
+To apply saved default settings without interaction:
+```bash
+./lowvolume.sh --defaults
+```
+
+Default settings are stored in `~/.config/lowvolume.conf` and include the selected sink ID and volume level.
 
 ## Contributing
 
@@ -210,6 +221,9 @@ Feel free to open issues, submit pull requests, or contribute with new features.
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Version History
+
+### Version 2.2
+- Added ability to save and automatically apply default settings with `--defaults` parameter to `lowvolume.sh`
 
 ### Version 2.1
 - Updated features of volume adjuster script `./lowvolume.sh` to allow precise volume control between 0.1% and 100%
