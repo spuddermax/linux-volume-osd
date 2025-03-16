@@ -210,7 +210,7 @@ To apply saved default settings without interaction:
 ./lowvolume.sh --defaults
 ```
 
-Default settings are stored in `~/.config/lowvolume.conf` and include the selected sink ID and volume level.
+Default settings are stored in `~/.config/lowvolume.conf` and include the selected sink name and volume level. These settings are designed to be persistent across system reboots, even if the internal device IDs change.
 
 ## Contributing
 
@@ -221,6 +221,9 @@ Feel free to open issues, submit pull requests, or contribute with new features.
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Version History
+
+### Version 2.2.1
+- Fix persistence for audio device selection across system reboots by storing device name instead of ID
 
 ### Version 2.2
 - Added ability to save and automatically apply default settings with `--defaults` parameter to `lowvolume.sh`

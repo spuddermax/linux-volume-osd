@@ -44,16 +44,15 @@ if [[ "$USE_DEFAULTS" == true ]] && [[ -f "$CONFIG_FILE" ]]; then
     echo "Using default settings from $CONFIG_FILE"
     source "$CONFIG_FILE"
     
-    # Verify the saved sink ID still exists
-    if [[ -n "$DEFAULT_SINK_ID" ]]; then
-        SINK_EXISTS=$(echo "$SINK_LIST" | jq -r '.[] | select(.id == '"$DEFAULT_SINK_ID"') | .id')
-        if [[ -z "$SINK_EXISTS" ]]; then
-            echo "Warning: Default sink no longer exists. Falling back to manual selection."
+    # Verify the saved sink name still exists and get its current ID
+    if [[ -n "$DEFAULT_SINK_NAME" ]]; then
+        SINK_ID=$(echo "$SINK_LIST" | jq -r '.[] | select(.name == "'"$DEFAULT_SINK_NAME"'") | .id')
+        if [[ -z "$SINK_ID" || "$SINK_ID" == "null" ]]; then
+            echo "Warning: Default sink '$DEFAULT_SINK_NAME' no longer exists. Falling back to manual selection."
             USE_DEFAULTS=false
         else
-            SINK_ID=$DEFAULT_SINK_ID
-            SINK_NAME=$(echo "$SINK_LIST" | jq -r '.[] | select(.id == '"$SINK_ID"') | .name')
-            SINK_DESCRIPTION=$(echo "$SINK_LIST" | jq -r '.[] | select(.id == '"$SINK_ID"') | .description')
+            SINK_NAME=$DEFAULT_SINK_NAME
+            SINK_DESCRIPTION=$(echo "$SINK_LIST" | jq -r '.[] | select(.name == "'"$SINK_NAME"'") | .description')
             VOLUME_LEVEL=$DEFAULT_VOLUME
             echo "Using sink: $SINK_DESCRIPTION"
             echo "Using volume level: $VOLUME_LEVEL"
@@ -109,10 +108,10 @@ if [[ "$USE_DEFAULTS" == false ]]; then
         # Ensure directory exists
         mkdir -p "$(dirname "$CONFIG_FILE")"
         
-        # Save to config file
+        # Save to config file - use sink name instead of ID for persistence
         cat > "$CONFIG_FILE" << EOF
 # Default lowvolume settings
-DEFAULT_SINK_ID=$SINK_ID
+DEFAULT_SINK_NAME="$SINK_NAME"
 DEFAULT_VOLUME=$VOLUME_LEVEL
 EOF
         echo "Settings saved to $CONFIG_FILE"
